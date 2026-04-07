@@ -6,9 +6,10 @@ This module enforces the schema contract defined in:
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -59,6 +60,20 @@ class DeviceRecord(BaseModel):
         return value
 
 
+class DeviceCreate(BaseModel):
+    """Create payload for devices."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    raw_value: str = Field(min_length=1)
+    device_name: str = Field(min_length=1, max_length=120)
+    location: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    manufacturer: str | None = Field(default=None, max_length=120)
+    model: str | None = Field(default=None, max_length=120)
+    metadata: dict[str, Any] | None = None
+
+
 class DeviceRecordUpdate(BaseModel):
     """Mutable fields allowed in PATCH/PUT operations."""
 
@@ -81,18 +96,46 @@ class DeviceUniquenessIndexes:
     dsks: set[str]
 
 
+def now_utc() -> datetime:
+    return datetime.now(UTC).replace(microsecond=0)
+
+
+def normalize_dsk(value: str) -> str:
+    digits = "".join(ch for ch in value.strip() if ch.isdigit())
+    if len(digits) != 40:
+        raise ValueError("dsk must contain exactly 40 digits")
+    return "-".join(digits[i : i + 5] for i in range(0, 40, 5))
+
+
+def generate_device_id(raw_value: str, dsk: str) -> str:
+    source = f"{raw_value.strip()}::{normalize_dsk(dsk)}"
+    digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    return f"dev-{digest[:20]}"
+
+
+def build_device_record(payload: DeviceCreate, derived_dsk: str) -> DeviceRecord:
+    normalized_dsk = normalize_dsk(derived_dsk)
+    created = now_utc()
+    return DeviceRecord(
+        schema_version=SCHEMA_VERSION,
+        id=generate_device_id(payload.raw_value, normalized_dsk),
+        device_name=payload.device_name,
+        raw_value=payload.raw_value,
+        dsk=normalized_dsk,
+        location=payload.location,
+        description=payload.description,
+        manufacturer=payload.manufacturer,
+        model=payload.model,
+        created_at=created,
+        updated_at=created,
+        metadata=payload.metadata,
+    )
+
+
 def validate_uniqueness_or_raise(
     record: DeviceRecord,
     indexes: DeviceUniquenessIndexes,
 ) -> None:
-    """Raise explicit errors when uniqueness constraints are violated.
-
-    Intended usage in route/service layer:
-      1. Build DeviceRecord from request body.
-      2. Load normalized uniqueness indexes from persistence.
-      3. Call this function before insert.
-    """
-
     if record.id in indexes.ids:
         raise ValueError("id must be unique; value already exists")
     if record.raw_value in indexes.raw_values:
@@ -105,8 +148,6 @@ def validate_identity_immutability_or_raise(
     current: DeviceRecord,
     candidate: DeviceRecord,
 ) -> None:
-    """Reject mutations of immutable identity fields on updates."""
-
     if current.id != candidate.id:
         raise ValueError("id is immutable and cannot be changed")
     if current.raw_value != candidate.raw_value:

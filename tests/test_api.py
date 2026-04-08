@@ -14,6 +14,25 @@ def _clean() -> None:
     for f in root.glob("dev-*.json"):
         f.unlink()
 
+    settings = Path("data/settings/settings.json")
+    if settings.exists():
+        settings.unlink()
+
+
+def _setup_and_login() -> None:
+    setup_payload = {
+        "username": "admin",
+        "password": "supersecure",
+        "github_repo": "https://github.com/example/repo",
+        "github_token": "ghp_test_token_123456",
+        "github_branch": "main",
+    }
+    setup = client.post("/api/v1/setup/bootstrap", json=setup_payload)
+    assert setup.status_code == 200
+
+    logged_in = client.post("/api/v1/auth/login", json={"username": "admin", "password": "supersecure"})
+    assert logged_in.status_code == 200
+
 
 def test_health_endpoint() -> None:
     _clean()
@@ -22,8 +41,10 @@ def test_health_endpoint() -> None:
     assert res.json()["status"] == "ok"
 
 
-def test_create_list_get_delete_device() -> None:
+def test_setup_login_and_crud_flow() -> None:
     _clean()
+    _setup_and_login()
+
     payload = {
         "device_name": "Hall Sensor",
         "raw_value": "90013278200312345123451234512345123451234512345",
@@ -50,8 +71,16 @@ def test_create_list_get_delete_device() -> None:
     assert deleted.status_code == 204
 
 
+def test_protected_route_requires_login() -> None:
+    _clean()
+    fresh_client = TestClient(app)
+    res = fresh_client.get("/api/v1/devices")
+    assert res.status_code == 401
+
+
 def test_import_endpoint_partial_success() -> None:
     _clean()
+    _setup_and_login()
     payload = [
         {"device_name": "A", "raw_value": "90013278200312345123451234512345123451234512345"},
         {"device_name": "B", "raw_value": "123"},

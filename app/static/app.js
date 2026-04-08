@@ -3,43 +3,167 @@ const { createApp } = Vue;
 createApp({
   data() {
     return {
+      setupRequired: false,
+      isAuthenticated: false,
+      message: "",
+      theme: localStorage.getItem("theme") || "dark",
       devices: [],
+      selectedDevice: null,
       form: { device_name: "", raw_value: "", location: "", description: "" },
+      editForm: { device_name: "", location: "", description: "" },
       filters: { q: "" },
-      qrSrc: "",
+      setup: { username: "", password: "", github_repo: "", github_token: "", github_branch: "main" },
+      loginForm: { username: "", password: "" },
+      admin: { username: "", new_password: "", github_repo: "", github_token: "", github_branch: "main" },
     };
   },
   async mounted() {
-    await this.loadDevices();
+    await this.bootstrap();
   },
   methods: {
+    setMessage(msg) {
+      this.message = msg;
+      setTimeout(() => {
+        if (this.message === msg) this.message = "";
+      }, 3000);
+    },
+    toggleTheme() {
+      this.theme = this.theme === "dark" ? "light" : "dark";
+      localStorage.setItem("theme", this.theme);
+    },
+    async bootstrap() {
+      const setupRes = await fetch("/api/v1/setup/status");
+      const setupBody = await setupRes.json();
+      this.setupRequired = !setupBody.setup_complete;
+      if (this.setupRequired) return;
+      await this.refreshSession();
+    },
+    async refreshSession() {
+      const res = await fetch("/api/v1/auth/me");
+      if (!res.ok) {
+        this.isAuthenticated = false;
+        return;
+      }
+      const body = await res.json();
+      this.isAuthenticated = !!body.authenticated;
+      this.admin = {
+        username: body.settings.username,
+        new_password: "",
+        github_repo: body.settings.github_repo,
+        github_token: "",
+        github_branch: body.settings.github_branch,
+      };
+      await this.loadDevices();
+    },
+    async completeSetup() {
+      const res = await fetch("/api/v1/setup/bootstrap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.setup),
+      });
+      if (!res.ok) return this.setMessage("Setup failed");
+      this.setupRequired = false;
+      this.loginForm.username = this.setup.username;
+      this.setMessage("Setup complete. Please login.");
+    },
+    async login() {
+      const res = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.loginForm),
+      });
+      if (!res.ok) return this.setMessage("Invalid login");
+      this.isAuthenticated = true;
+      await this.refreshSession();
+      this.setMessage("Logged in");
+    },
+    async logout() {
+      await fetch("/api/v1/auth/logout", { method: "POST" });
+      this.isAuthenticated = false;
+      this.$refs.adminModal.close();
+    },
     async loadDevices() {
       const params = new URLSearchParams();
       if (this.filters.q) params.set("q", this.filters.q);
       const res = await fetch(`/api/v1/devices?${params.toString()}`);
+      if (!res.ok) return;
       const body = await res.json();
       this.devices = body.items;
     },
+    openAddModal() {
+      this.form = { device_name: "", raw_value: "", location: "", description: "" };
+      this.$refs.addModal.showModal();
+    },
     async addDevice() {
-      await fetch("/api/v1/devices", {
+      const res = await fetch("/api/v1/devices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(this.form),
       });
-      this.form = { device_name: "", raw_value: "", location: "", description: "" };
+      if (!res.ok) return this.setMessage("Could not add device");
+      this.$refs.addModal.close();
       await this.loadDevices();
+      this.setMessage("Device added");
+    },
+    openDevice(item) {
+      this.selectedDevice = item;
+      this.editForm = {
+        device_name: item.device_name,
+        location: item.location || "",
+        description: item.description || "",
+      };
+      this.$refs.deviceModal.showModal();
+    },
+    async saveDeviceEdits() {
+      if (!this.selectedDevice) return;
+      const res = await fetch(`/api/v1/devices/${this.selectedDevice.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.editForm),
+      });
+      if (!res.ok) return this.setMessage("Update failed");
+      await this.loadDevices();
+      this.$refs.deviceModal.close();
+      this.setMessage("Device updated");
     },
     async remove(id) {
-      await fetch(`/api/v1/devices/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/v1/devices/${id}`, { method: "DELETE" });
+      if (!res.ok) return this.setMessage("Delete failed");
+      this.$refs.deviceModal.close();
       await this.loadDevices();
+      this.setMessage("Device deleted");
     },
-    showQr(id) {
-      this.qrSrc = `/api/v1/devices/${id}/qr.png`;
-      this.$refs.modal.showModal();
+    openAdmin() {
+      if (!this.isAuthenticated) return;
+      this.$refs.adminModal.showModal();
     },
-    async syncNow() {
-      await fetch("/api/v1/sync", { method: "POST" });
-      await this.loadDevices();
+    async saveSettings() {
+      const payload = {
+        username: this.admin.username,
+        new_password: this.admin.new_password || null,
+        github_repo: this.admin.github_repo,
+        github_token: this.admin.github_token || null,
+        github_branch: this.admin.github_branch,
+      };
+      const res = await fetch("/api/v1/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return this.setMessage("Failed to save settings");
+      this.admin.new_password = "";
+      this.admin.github_token = "";
+      this.setMessage("Settings saved");
+    },
+    async testRepoAuth() {
+      const res = await fetch("/api/v1/admin/test-repo-auth", { method: "POST" });
+      const body = await res.json();
+      this.setMessage(body.ok ? "Repo auth OK" : `Repo auth failed: ${body.reason}`);
+    },
+    async forcePull() {
+      const res = await fetch("/api/v1/admin/force-pull-update", { method: "POST" });
+      const body = await res.json();
+      this.setMessage(body.ok ? "Repository updated" : "Repository update failed");
     },
   },
 }).mount("#app");

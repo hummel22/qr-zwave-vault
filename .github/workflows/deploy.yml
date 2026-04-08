@@ -77,14 +77,19 @@ jobs:
 
           docker build --no-cache \
             -t ${{ env.REGISTRY }}/qr-zwave-vault:$SHA \
-            -t ${{ env.REGISTRY }}/qr-zwave-vault:latest \
             .
 
           docker push ${{ env.REGISTRY }}/qr-zwave-vault:$SHA
+
+          docker tag ${{ env.REGISTRY }}/qr-zwave-vault:$SHA ${{ env.REGISTRY }}/qr-zwave-vault:latest
           docker push ${{ env.REGISTRY }}/qr-zwave-vault:latest
 
       - name: Deploy container
         run: |
+          docker compose --env-file ${{ env.ENV_FILE }} \
+            -f ${{ env.COMPOSE_FILE }} \
+            pull qr-zwave-vault
+
           docker compose --env-file ${{ env.ENV_FILE }} \
             -f ${{ env.COMPOSE_FILE }} \
             up -d qr-zwave-vault
@@ -119,6 +124,10 @@ jobs:
           echo "Health check failed - rolling back to :previous"
           docker tag ${{ env.REGISTRY }}/qr-zwave-vault:previous ${{ env.REGISTRY }}/qr-zwave-vault:latest 2>/dev/null || true
           docker push ${{ env.REGISTRY }}/qr-zwave-vault:latest 2>/dev/null || true
+
+          docker compose --env-file ${{ env.ENV_FILE }} \
+            -f ${{ env.COMPOSE_FILE }} \
+            pull qr-zwave-vault
 
           docker compose --env-file ${{ env.ENV_FILE }} \
             -f ${{ env.COMPOSE_FILE }} \

@@ -1,5 +1,15 @@
 const { createApp } = Vue;
 
+async function parseJsonSafely(response) {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 createApp({
   data() {
     return {
@@ -33,7 +43,11 @@ createApp({
     },
     async bootstrap() {
       const setupRes = await fetch("/api/v1/setup/status");
-      const setupBody = await setupRes.json();
+      const setupBody = await parseJsonSafely(setupRes);
+      if (!setupRes.ok || !setupBody) {
+        this.setMessage("Could not verify setup status");
+        return;
+      }
       this.setupRequired = !setupBody.setup_complete;
       if (this.setupRequired) return;
       await this.refreshSession();
@@ -44,14 +58,18 @@ createApp({
         this.isAuthenticated = false;
         return;
       }
-      const body = await res.json();
-      this.isAuthenticated = !!body.authenticated;
+      const body = await parseJsonSafely(res);
+      this.isAuthenticated = !!body?.authenticated;
+      if (!this.isAuthenticated) {
+        return;
+      }
+      const settings = body?.settings || {};
       this.admin = {
-        username: body.settings.username,
+        username: settings.username || "",
         new_password: "",
-        github_repo: body.settings.github_repo,
+        github_repo: settings.github_repo || "",
         github_token: "",
-        github_branch: body.settings.github_branch,
+        github_branch: settings.github_branch || "main",
       };
       await this.loadDevices();
     },
@@ -86,9 +104,14 @@ createApp({
       const params = new URLSearchParams();
       if (this.filters.q) params.set("q", this.filters.q);
       const res = await fetch(`/api/v1/devices?${params.toString()}`);
+      if (res.status === 401) {
+        this.isAuthenticated = false;
+        this.devices = [];
+        return;
+      }
       if (!res.ok) return;
-      const body = await res.json();
-      this.devices = body.items;
+      const body = await parseJsonSafely(res);
+      this.devices = body?.items || [];
     },
     openAddModal() {
       this.form = { device_name: "", raw_value: "", location: "", description: "" };
@@ -157,13 +180,13 @@ createApp({
     },
     async testRepoAuth() {
       const res = await fetch("/api/v1/admin/test-repo-auth", { method: "POST" });
-      const body = await res.json();
-      this.setMessage(body.ok ? "Repo auth OK" : `Repo auth failed: ${body.reason}`);
+      const body = await parseJsonSafely(res);
+      this.setMessage(body?.ok ? "Repo auth OK" : `Repo auth failed: ${body?.reason || "Unknown error"}`);
     },
     async forcePull() {
       const res = await fetch("/api/v1/admin/force-pull-update", { method: "POST" });
-      const body = await res.json();
-      this.setMessage(body.ok ? "Repository updated" : "Repository update failed");
+      const body = await parseJsonSafely(res);
+      this.setMessage(body?.ok ? "Repository updated" : "Repository update failed");
     },
   },
 }).mount("#app");

@@ -1,0 +1,31 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  background: #0b1020;
+  color: #e8eefc;
+}
+.shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+.topbar,.row { display:flex; justify-content:space-between; gap:.75rem; align-items:center; }
+.panel { background:#121a31; border-radius:16px; padding:1rem; }
+.stack { display:grid; gap:.6rem; }
+input, textarea, button { font:inherit; border-radius:12px; border:1px solid #304067; padding:.65rem .8rem; }
+input, textarea { background:#090f1f; color:#e8eefc; }
+.btn { background:#1d2a4b; color:#fff; cursor:pointer; }
+.btn.primary { background:#2864ff; border-color:#2864ff; }
+.btn.danger { background:#932525; border-color:#932525; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:.8rem; }
+.card { background:#0b142b; border:1px solid #243559; border-radius:12px; padding:.8rem; display:grid; gap:.45rem; }
+dialog { border:none; border-radius:14px; padding:1rem; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 700px) {
+  .topbar,.row { flex-direction:column; align-items:stretch; }
+}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QR Z-Wave Vault</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  </head>
+  <body>
+    <main id="app" class="shell">
+      <header class="topbar">
+        <h1>QR Z-Wave Vault</h1>
+        <button class="btn" @click="syncNow">Sync</button>
+      </header>
+
+      <section class="panel">
+        <h2>Add Device</h2>
+        <form class="stack" @submit.prevent="addDevice">
+          <input v-model="form.device_name" placeholder="Device name" required />
+          <textarea v-model="form.raw_value" placeholder="Paste QR payload" required></textarea>
+          <input v-model="form.location" placeholder="Location" />
+          <textarea v-model="form.description" placeholder="Description"></textarea>
+          <button class="btn primary" type="submit">Save Device</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="row">
+          <h2>Devices</h2>
+          <input v-model="filters.q" placeholder="Search" @input="loadDevices" />
+        </div>
+        <div class="cards">
+          <article class="card" v-for="item in devices" :key="item.id">
+            <h3>{{ item.device_name }}</h3>
+            <p>{{ item.dsk }}</p>
+            <p>{{ item.description || 'No notes' }}</p>
+            <div class="row">
+              <button class="btn" @click="showQr(item.id)">QR</button>
+              <button class="btn danger" @click="remove(item.id)">Delete</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <dialog ref="modal">
+        <img :src="qrSrc" alt="Device QR" />
+        <button class="btn" @click="$refs.modal.close()">Close</button>
+      </dialog>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

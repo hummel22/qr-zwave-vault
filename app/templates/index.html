@@ -8,14 +8,87 @@
     <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
   </head>
   <body>
-    <main id="app" class="shell">
-      <header class="topbar">
-        <h1>QR Z-Wave Vault</h1>
-        <button class="btn" @click="syncNow">Sync</button>
+    <main id="app" class="shell" :data-theme="theme">
+      <header class="menu-bar">
+        <div class="menu-left">
+          <button class="icon-btn" @click="toggleTheme" title="Toggle theme">🌓</button>
+          <button class="icon-btn" @click="openAdmin" title="Settings">⚙️</button>
+          <h1>QR Z-Wave Vault</h1>
+        </div>
+        <div class="menu-right">
+          <button class="icon-btn" @click="openAdmin" title="Profile">👤</button>
+        </div>
       </header>
 
-      <section class="panel">
-        <h2>Add Device</h2>
+      <section v-if="setupRequired" class="panel auth-panel">
+        <h2>First-time Setup</h2>
+        <form class="stack" @submit.prevent="completeSetup">
+          <input v-model="setup.username" placeholder="Admin username" required />
+          <input v-model="setup.password" type="password" minlength="8" placeholder="Admin password" required />
+          <input v-model="setup.github_repo" placeholder="GitHub repo URL" required />
+          <input v-model="setup.github_token" placeholder="GitHub token" required />
+          <input v-model="setup.github_branch" placeholder="Branch" required />
+          <button class="btn primary" type="submit">Complete Setup</button>
+        </form>
+      </section>
+
+      <section v-else-if="!isAuthenticated" class="panel auth-panel">
+        <h2>Login</h2>
+        <form class="stack" @submit.prevent="login">
+          <input v-model="loginForm.username" placeholder="Username" required />
+          <input v-model="loginForm.password" type="password" placeholder="Password" required />
+          <button class="btn primary" type="submit">Sign In</button>
+        </form>
+      </section>
+
+      <template v-else>
+        <section class="panel table-panel">
+          <div class="row">
+            <h2>Devices</h2>
+            <input v-model="filters.q" placeholder="Search devices" @input="loadDevices" />
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>DSK</th>
+                <th>Location</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in devices" :key="item.id" @click="openDevice(item)">
+                <td>{{ item.device_name }}</td>
+                <td>{{ item.dsk }}</td>
+                <td>{{ item.location || '—' }}</td>
+                <td>{{ item.updated_at || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <button class="fab" @click="openAddModal">＋</button>
+      </template>
+
+      <dialog ref="deviceModal">
+        <h3>{{ selectedDevice?.device_name }}</h3>
+        <p>{{ selectedDevice?.description || 'No description' }}</p>
+        <img v-if="selectedDevice" :src="`/api/v1/devices/${selectedDevice.id}/qr.png`" alt="Device QR" />
+        <form v-if="selectedDevice" class="stack" @submit.prevent="saveDeviceEdits">
+          <input v-model="editForm.device_name" placeholder="Device name" required />
+          <input v-model="editForm.location" placeholder="Location" />
+          <textarea v-model="editForm.description" placeholder="Description"></textarea>
+          <div class="row">
+            <button class="btn primary" type="submit">Save</button>
+            <button class="btn danger" type="button" @click="remove(selectedDevice.id)">Delete</button>
+          </div>
+        </form>
+        <button class="btn" @click="$refs.deviceModal.close()">Close</button>
+      </dialog>
+
+      <dialog ref="addModal">
+        <h3>Add New Device</h3>
         <form class="stack" @submit.prevent="addDevice">
           <input v-model="form.device_name" placeholder="Device name" required />
           <textarea v-model="form.raw_value" placeholder="Paste QR payload" required></textarea>
@@ -23,30 +96,30 @@
           <textarea v-model="form.description" placeholder="Description"></textarea>
           <button class="btn primary" type="submit">Save Device</button>
         </form>
-      </section>
-
-      <section class="panel">
-        <div class="row">
-          <h2>Devices</h2>
-          <input v-model="filters.q" placeholder="Search" @input="loadDevices" />
-        </div>
-        <div class="cards">
-          <article class="card" v-for="item in devices" :key="item.id">
-            <h3>{{ item.device_name }}</h3>
-            <p>{{ item.dsk }}</p>
-            <p>{{ item.description || 'No notes' }}</p>
-            <div class="row">
-              <button class="btn" @click="showQr(item.id)">QR</button>
-              <button class="btn danger" @click="remove(item.id)">Delete</button>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <dialog ref="modal">
-        <img :src="qrSrc" alt="Device QR" />
-        <button class="btn" @click="$refs.modal.close()">Close</button>
+        <button class="btn" @click="$refs.addModal.close()">Cancel</button>
       </dialog>
+
+      <dialog ref="adminModal">
+        <h3>Admin Settings</h3>
+        <form class="stack" @submit.prevent="saveSettings">
+          <input v-model="admin.username" placeholder="Admin username" />
+          <input v-model="admin.new_password" type="password" minlength="8" placeholder="New password" />
+          <input v-model="admin.github_repo" placeholder="GitHub repo" />
+          <input v-model="admin.github_token" placeholder="GitHub token" />
+          <input v-model="admin.github_branch" placeholder="Branch" />
+          <div class="row">
+            <button class="btn primary" type="submit">Save</button>
+            <button class="btn" type="button" @click="testRepoAuth">Test Repo Auth</button>
+            <button class="btn" type="button" @click="forcePull">Force Pull & Update</button>
+          </div>
+        </form>
+        <div class="row">
+          <button class="btn" @click="logout">Logout</button>
+          <button class="btn" @click="$refs.adminModal.close()">Close</button>
+        </div>
+      </dialog>
+
+      <p v-if="message" class="message">{{ message }}</p>
     </main>
     <script src="/static/app.js"></script>
   </body>

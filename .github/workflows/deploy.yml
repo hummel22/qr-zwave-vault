@@ -104,7 +104,7 @@ jobs:
 
           echo "Checking qr-zwave-vault..."
           for i in $(seq 1 $RETRIES); do
-            if curl -sf http://localhost:8091/health > /dev/null 2>&1; then
+            if curl -sf http://host.docker.internal:8091/health > /dev/null 2>&1; then
               echo "Service healthy"
               echo "healthy=true" >> $GITHUB_OUTPUT
               exit 0

@@ -1,0 +1,163 @@
+name: Deploy QR Z-Wave Vault
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: false
+        default: 'main'
+      rollback_to:
+        description: 'Image tag to roll back to (leave empty for normal deploy)'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, ARM64]
+    env:
+      REGISTRY: localhost:5001
+      REPO_PATH: /repos/qr-zwave-vault
+      COMPOSE_FILE: /repos/homelab/stacks/mini/qr-zwave-vault/docker-compose.yml
+      ENV_FILE: /repos/homelab/.env
+      NANOCLAW_URL: http://10.11.12.93:4000
+
+    steps:
+      - name: Gather current state
+        id: current
+        run: |
+          CURRENT_IMAGE=$(docker inspect qr-zwave-vault --format '{{.Image}}' 2>/dev/null) || CURRENT_IMAGE="none"
+          CURRENT_TAG=$(docker inspect qr-zwave-vault --format '{{.Config.Image}}' 2>/dev/null | sed 's/.*://') || CURRENT_TAG="unknown"
+          [ -z "$CURRENT_TAG" ] && CURRENT_TAG="unknown"
+
+          echo "image=$CURRENT_IMAGE" >> $GITHUB_OUTPUT
+          echo "current_tag=$CURRENT_TAG" >> $GITHUB_OUTPUT
+          echo "Current image: $CURRENT_IMAGE"
+          echo "Current tag: $CURRENT_TAG"
+
+      - name: Tag previous image
+        run: |
+          docker tag ${{ env.REGISTRY }}/qr-zwave-vault:latest ${{ env.REGISTRY }}/qr-zwave-vault:previous 2>/dev/null || true
+          docker push ${{ env.REGISTRY }}/qr-zwave-vault:previous 2>/dev/null || true
+
+      - name: Rollback (if rollback_to is set)
+        if: ${{ inputs.rollback_to != '' }}
+        id: rollback
+        run: |
+          TAG="${{ inputs.rollback_to }}"
+          echo "Rolling back to tag: $TAG"
+
+          docker pull ${{ env.REGISTRY }}/qr-zwave-vault:$TAG
+          docker tag ${{ env.REGISTRY }}/qr-zwave-vault:$TAG ${{ env.REGISTRY }}/qr-zwave-vault:latest
+          docker push ${{ env.REGISTRY }}/qr-zwave-vault:latest
+
+          echo "image_tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH known hosts
+        run: |
+          mkdir -p /tmp/.ssh
+          ssh-keyscan github.com >> /tmp/.ssh/known_hosts 2>/dev/null
+          echo "GIT_SSH_COMMAND=ssh -F /dev/null -i /root/.ssh/id_ed25519_github -o UserKnownHostsFile=/tmp/.ssh/known_hosts" >> $GITHUB_ENV
+
+      - name: Pull latest code
+        if: ${{ inputs.rollback_to == '' }}
+        working-directory: /repos/qr-zwave-vault
+        run: |
+          git fetch origin
+          git checkout ${{ inputs.branch }}
+          git pull origin ${{ inputs.branch }}
+
+      - name: Build and push image
+        if: ${{ inputs.rollback_to == '' }}
+        id: build
+        working-directory: /repos/qr-zwave-vault
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+          docker build --no-cache \
+            -t ${{ env.REGISTRY }}/qr-zwave-vault:$SHA \
+            -t ${{ env.REGISTRY }}/qr-zwave-vault:latest \
+            .
+
+          docker push ${{ env.REGISTRY }}/qr-zwave-vault:$SHA
+          docker push ${{ env.REGISTRY }}/qr-zwave-vault:latest
+
+      - name: Deploy container
+        run: |
+          docker compose --env-file ${{ env.ENV_FILE }} \
+            -f ${{ env.COMPOSE_FILE }} \
+            up -d qr-zwave-vault
+
+          sleep 5
+
+      - name: Health check
+        id: health
+        run: |
+          RETRIES=12
+          DELAY=10
+
+          echo "Checking qr-zwave-vault..."
+          for i in $(seq 1 $RETRIES); do
+            if curl -sf http://localhost:8091/health > /dev/null 2>&1; then
+              echo "Service healthy"
+              echo "healthy=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            if [ $i -eq $RETRIES ]; then
+              echo "Health check failed after $RETRIES attempts"
+              echo "healthy=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i/$RETRIES failed, waiting ${DELAY}s..."
+            sleep $DELAY
+          done
+
+      - name: Auto-rollback on failure
+        if: steps.health.outputs.healthy == 'false'
+        run: |
+          echo "Health check failed - rolling back to :previous"
+          docker tag ${{ env.REGISTRY }}/qr-zwave-vault:previous ${{ env.REGISTRY }}/qr-zwave-vault:latest 2>/dev/null || true
+          docker push ${{ env.REGISTRY }}/qr-zwave-vault:latest 2>/dev/null || true
+
+          docker compose --env-file ${{ env.ENV_FILE }} \
+            -f ${{ env.COMPOSE_FILE }} \
+            up -d qr-zwave-vault
+
+          sleep 5
+
+      - name: Notify NanoClaw
+        if: always()
+        run: |
+          if [ "${{ inputs.rollback_to }}" != "" ]; then
+            IMAGE_TAG="${{ inputs.rollback_to }}"
+            ACTION="rollback"
+          else
+            IMAGE_TAG="${{ steps.build.outputs.sha }}"
+            ACTION="deploy"
+          fi
+
+          if [ "${{ steps.health.outputs.healthy }}" == "false" ]; then
+            STATUS="rolled_back"
+            ERROR="Health check failed after deploy - auto-rolled back to previous"
+          elif [ "${{ job.status }}" == "success" ]; then
+            STATUS="success"
+            ERROR=""
+          else
+            STATUS="failure"
+            ERROR="Workflow failed: ${{ job.status }}"
+          fi
+
+          curl -sf -X POST "${{ env.NANOCLAW_URL }}/web/api/deploy/webhook" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"service\": \"qr-zwave-vault\",
+              \"action\": \"$ACTION\",
+              \"branch\": \"${{ inputs.branch }}\",
+              \"image_tag\": \"$IMAGE_TAG\",
+              \"previous_tag\": \"${{ steps.current.outputs.current_tag }}\",
+              \"github_run_id\": \"${{ github.run_id }}\",
+              \"github_run_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"status\": \"$STATUS\",
+              \"error_message\": \"$ERROR\"
+            }" || echo "Warning: Failed to notify NanoClaw (non-fatal)"

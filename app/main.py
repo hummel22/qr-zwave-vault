@@ -10,9 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.models.device import DeviceCreate, DeviceRecord, DeviceRecordUpdate, build_device_record, now_utc, validate_uniqueness_or_raise
+from app.models.device import DeviceCreate, DeviceRecord, DeviceRecordUpdate, build_device_record, normalize_dsk, now_utc, validate_uniqueness_or_raise
 from app.models.settings import LoginRequest, SettingsUpdateRequest, SetupBootstrapRequest, StoredSettings, hash_password, verify_password
 from app.services.git_sync import GitSyncService
+from app.services.home_assistant_sync import HomeAssistantSyncService, build_record_from_candidate, merge_candidate
 from app.services.parser import extract_dsk
 from app.storage.device_store import DeviceStore
 from app.storage.settings_store import SettingsStore
@@ -24,6 +25,7 @@ SETTINGS_FILE = Path(os.getenv("SETTINGS_FILE", "./data/settings/settings.json")
 store = DeviceStore(DATA_DIR)
 settings_store = SettingsStore(SETTINGS_FILE)
 sync = GitSyncService()
+ha_sync = HomeAssistantSyncService()
 app = FastAPI(title="QR Z-Wave Vault", version=APP_VERSION)
 app.add_middleware(
     CORSMiddleware,
@@ -103,6 +105,7 @@ def setup_bootstrap(payload: SetupBootstrapRequest) -> dict:
         github_repo=payload.github_repo,
         github_token=payload.github_token,
         github_branch=payload.github_branch,
+        ha_zwave_path="/api/nodes",
     )
     settings_store.save(settings)
     sync.configure(settings.github_repo, settings.github_token, settings.github_branch)
@@ -163,6 +166,10 @@ def admin_settings_update(payload: SettingsUpdateRequest, request: Request) -> d
         github_repo=payload.github_repo or settings.github_repo,
         github_token=payload.github_token or settings.github_token,
         github_branch=payload.github_branch or settings.github_branch,
+        ha_url=payload.ha_url if payload.ha_url is not None else settings.ha_url,
+        ha_token=payload.ha_token if payload.ha_token is not None else settings.ha_token,
+        ha_zwave_path=payload.ha_zwave_path or settings.ha_zwave_path,
+        ha_verify_ssl=payload.ha_verify_ssl if payload.ha_verify_ssl is not None else settings.ha_verify_ssl,
     )
     settings_store.save(updated)
     sync.configure(updated.github_repo, updated.github_token, updated.github_branch)
@@ -185,6 +192,67 @@ def admin_force_pull_update(request: Request) -> dict:
     sync.configure(settings.github_repo, settings.github_token, settings.github_branch)
     result = sync.trigger_sync()
     return {"ok": result.get("state") == "synced", "sync": result}
+
+
+@app.post("/api/v1/admin/test-home-assistant-config")
+def admin_test_home_assistant_config(request: Request) -> dict:
+    _require_auth(request)
+    settings = _current_settings_or_404()
+    if not settings.ha_url or not settings.ha_token:
+        return {"ok": False, "reason": "missing_home_assistant_config", "count": 0}
+    ok, reason, count = ha_sync.test_config(
+        base_url=settings.ha_url,
+        token=settings.ha_token,
+        zwave_path=settings.ha_zwave_path,
+        verify_ssl=settings.ha_verify_ssl,
+    )
+    return {"ok": ok, "reason": reason, "count": count}
+
+
+@app.post("/api/v1/admin/sync-from-home-assistant")
+def admin_sync_from_home_assistant(request: Request) -> dict:
+    _require_auth(request)
+    settings = _current_settings_or_404()
+    if not settings.ha_url or not settings.ha_token:
+        raise HTTPException(status_code=400, detail="missing_home_assistant_config")
+
+    candidates = ha_sync.fetch_nodes(
+        base_url=settings.ha_url,
+        token=settings.ha_token,
+        zwave_path=settings.ha_zwave_path,
+        verify_ssl=settings.ha_verify_ssl,
+    )
+    existing = store.list_all()
+    by_dsk = {item.dsk: item for item in existing}
+    created = 0
+    updated = 0
+    skipped = 0
+    errors: list[dict] = []
+    for candidate in candidates:
+        try:
+            normalized_dsk = normalize_dsk(candidate.dsk.replace(" ", ""))
+            current = by_dsk.get(normalized_dsk)
+            if current:
+                merged = merge_candidate(current, candidate)
+                store.update(merged)
+                by_dsk[normalized_dsk] = merged
+                updated += 1
+            else:
+                record = build_record_from_candidate(candidate)
+                validate_uniqueness_or_raise(record, store.uniqueness_indexes())
+                store.create(record)
+                by_dsk[record.dsk] = record
+                created += 1
+        except ValueError as exc:
+            skipped += 1
+            errors.append({"node_id": candidate.node_id, "error": str(exc)})
+    if created or updated:
+        sync.mark_write()
+    return {
+        "ok": True,
+        "sync_direction": "home_assistant_to_vault",
+        "results": {"created": created, "updated": updated, "skipped": skipped, "errors": errors},
+    }
 
 
 @app.get("/api/v1/devices")

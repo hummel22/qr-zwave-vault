@@ -24,6 +24,10 @@ createApp({
       filters: { q: "" },
       setup: { username: "", password: "", github_repo: "", github_token: "", github_branch: "main" },
       loginForm: { username: "", password: "" },
+      scannerActive: false,
+      scannerStream: null,
+      scannerTimer: null,
+      barcodeDetector: null,
       admin: {
         username: "",
         new_password: "",
@@ -39,6 +43,11 @@ createApp({
   },
   async mounted() {
     await this.bootstrap();
+  },
+  computed: {
+    canScanWithCamera() {
+      return !!(window.BarcodeDetector && navigator.mediaDevices?.getUserMedia);
+    },
   },
   methods: {
     setMessage(msg) {
@@ -131,6 +140,69 @@ createApp({
       this.form = { device_name: "", raw_value: "", location: "", description: "" };
       this.$refs.addModal.showModal();
     },
+    async toggleScanner() {
+      if (this.scannerActive) {
+        this.stopScanner();
+        return;
+      }
+      await this.startScanner();
+    },
+    async startScanner() {
+      if (!this.canScanWithCamera) {
+        this.setMessage("Camera scan is not supported on this browser");
+        return;
+      }
+      this.stopScanner();
+      const videoEl = this.$refs.scannerVideo;
+      if (!videoEl) return;
+      const supportedFormats = await BarcodeDetector.getSupportedFormats();
+      if (!supportedFormats.includes("qr_code")) {
+        this.setMessage("QR format is not supported by this camera scanner");
+        return;
+      }
+      this.barcodeDetector = new BarcodeDetector({ formats: ["qr_code"] });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+        },
+        audio: false,
+      });
+      this.scannerStream = stream;
+      videoEl.srcObject = stream;
+      await videoEl.play();
+      this.scannerActive = true;
+      this.scannerTimer = setInterval(async () => {
+        if (!this.scannerActive || !this.barcodeDetector) return;
+        try {
+          const codes = await this.barcodeDetector.detect(videoEl);
+          if (!codes.length) return;
+          const value = (codes[0].rawValue || "").trim();
+          if (!value) return;
+          this.form.raw_value = value;
+          this.stopScanner();
+          this.setMessage("QR scanned and payload filled");
+        } catch {
+          this.stopScanner();
+          this.setMessage("Camera scan failed");
+        }
+      }, 450);
+    },
+    stopScanner() {
+      this.scannerActive = false;
+      if (this.scannerTimer) {
+        clearInterval(this.scannerTimer);
+        this.scannerTimer = null;
+      }
+      if (this.scannerStream) {
+        this.scannerStream.getTracks().forEach((track) => track.stop());
+        this.scannerStream = null;
+      }
+      const videoEl = this.$refs.scannerVideo;
+      if (videoEl) {
+        videoEl.srcObject = null;
+      }
+      this.barcodeDetector = null;
+    },
     async addDevice() {
       const res = await fetch("/api/v1/devices", {
         method: "POST",
@@ -138,6 +210,7 @@ createApp({
         body: JSON.stringify(this.form),
       });
       if (!res.ok) return this.setMessage("Could not add device");
+      this.stopScanner();
       this.$refs.addModal.close();
       await this.loadDevices();
       this.setMessage("Device added");
@@ -223,5 +296,8 @@ createApp({
       const body = await parseJsonSafely(res);
       this.setMessage(body?.ok ? "Repository updated" : "Repository update failed");
     },
+  },
+  beforeUnmount() {
+    this.stopScanner();
   },
 }).mount("#app");

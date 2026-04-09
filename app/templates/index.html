@@ -87,16 +87,23 @@
         <button class="btn" @click="$refs.deviceModal.close()">Close</button>
       </dialog>
 
-      <dialog ref="addModal">
+      <dialog ref="addModal" @close="stopScanner">
         <h3>Add New Device</h3>
         <form class="stack" @submit.prevent="addDevice">
           <input v-model="form.device_name" placeholder="Device name" required />
+          <div class="scan-tools">
+            <button v-if="canScanWithCamera" class="btn" type="button" @click="toggleScanner">
+              {{ scannerActive ? 'Stop camera scan' : 'Scan QR with camera' }}
+            </button>
+            <p v-else class="hint">Camera scan is not supported on this browser yet. Paste the QR payload manually.</p>
+            <video v-show="scannerActive" ref="scannerVideo" class="scanner-video" autoplay playsinline muted></video>
+          </div>
           <textarea v-model="form.raw_value" placeholder="Paste QR payload" required></textarea>
           <input v-model="form.location" placeholder="Location" />
           <textarea v-model="form.description" placeholder="Description"></textarea>
           <button class="btn primary" type="submit">Save Device</button>
         </form>
-        <button class="btn" @click="$refs.addModal.close()">Cancel</button>
+        <button class="btn" @click="stopScanner(); $refs.addModal.close()">Cancel</button>
       </dialog>
 
       <dialog ref="adminModal">

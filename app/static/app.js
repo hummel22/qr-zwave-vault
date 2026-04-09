@@ -24,7 +24,17 @@ createApp({
       filters: { q: "" },
       setup: { username: "", password: "", github_repo: "", github_token: "", github_branch: "main" },
       loginForm: { username: "", password: "" },
-      admin: { username: "", new_password: "", github_repo: "", github_token: "", github_branch: "main" },
+      admin: {
+        username: "",
+        new_password: "",
+        github_repo: "",
+        github_token: "",
+        github_branch: "main",
+        ha_url: "",
+        ha_token: "",
+        ha_zwave_path: "/api/nodes",
+        ha_verify_ssl: true,
+      },
     };
   },
   async mounted() {
@@ -70,6 +80,10 @@ createApp({
         github_repo: settings.github_repo || "",
         github_token: "",
         github_branch: settings.github_branch || "main",
+        ha_url: settings.ha_url || "",
+        ha_token: "",
+        ha_zwave_path: settings.ha_zwave_path || "/api/nodes",
+        ha_verify_ssl: settings.ha_verify_ssl !== false,
       };
       await this.loadDevices();
     },
@@ -167,6 +181,10 @@ createApp({
         github_repo: this.admin.github_repo,
         github_token: this.admin.github_token || null,
         github_branch: this.admin.github_branch,
+        ha_url: this.admin.ha_url || null,
+        ha_token: this.admin.ha_token || null,
+        ha_zwave_path: this.admin.ha_zwave_path || "/api/nodes",
+        ha_verify_ssl: this.admin.ha_verify_ssl,
       };
       const res = await fetch("/api/v1/admin/settings", {
         method: "PUT",
@@ -176,7 +194,24 @@ createApp({
       if (!res.ok) return this.setMessage("Failed to save settings");
       this.admin.new_password = "";
       this.admin.github_token = "";
+      this.admin.ha_token = "";
       this.setMessage("Settings saved");
+    },
+    async testHomeAssistantConfig() {
+      const res = await fetch("/api/v1/admin/test-home-assistant-config", { method: "POST" });
+      const body = await parseJsonSafely(res);
+      if (!res.ok) return this.setMessage("Config test failed");
+      this.setMessage(body?.ok ? `Home Assistant config OK (${body?.count || 0} nodes)` : `HA config failed: ${body?.reason || "unknown"}`);
+    },
+    async syncFromHomeAssistant() {
+      const res = await fetch("/api/v1/admin/sync-from-home-assistant", { method: "POST" });
+      const body = await parseJsonSafely(res);
+      if (!res.ok) {
+        return this.setMessage(body?.detail || "Home Assistant sync failed");
+      }
+      const results = body?.results || {};
+      await this.loadDevices();
+      this.setMessage(`HA sync done: +${results.created || 0} new, ${results.updated || 0} updated, ${results.skipped || 0} skipped`);
     },
     async testRepoAuth() {
       const res = await fetch("/api/v1/admin/test-repo-auth", { method: "POST" });

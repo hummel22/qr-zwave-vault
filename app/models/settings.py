@@ -52,6 +52,10 @@ class SettingsUpdateRequest(BaseModel):
     github_repo: str | None = Field(default=None, min_length=1, max_length=300)
     github_token: str | None = Field(default=None, min_length=1, max_length=300)
     github_branch: str | None = Field(default=None, min_length=1, max_length=120)
+    ha_url: str | None = Field(default=None, min_length=1, max_length=300)
+    ha_token: str | None = Field(default=None, min_length=1, max_length=300)
+    ha_zwave_path: str | None = Field(default=None, min_length=1, max_length=120)
+    ha_verify_ssl: bool | None = None
 
 
 @dataclass
@@ -62,6 +66,10 @@ class StoredSettings:
     github_repo: str
     github_token: str
     github_branch: str = "main"
+    ha_url: str | None = None
+    ha_token: str | None = None
+    ha_zwave_path: str = "/api/nodes"
+    ha_verify_ssl: bool = True
 
     def masked(self) -> dict:
         token = self.github_token
@@ -69,9 +77,20 @@ class StoredSettings:
             masked_token = "*" * len(token)
         else:
             masked_token = f"{token[:4]}…{token[-4:]}"
+        ha_token = self.ha_token or ""
+        if not ha_token:
+            masked_ha_token = ""
+        elif len(ha_token) <= 8:
+            masked_ha_token = "*" * len(ha_token)
+        else:
+            masked_ha_token = f"{ha_token[:4]}…{ha_token[-4:]}"
         return {
             "username": self.username,
             "github_repo": self.github_repo,
             "github_branch": self.github_branch,
             "github_token_masked": masked_token,
+            "ha_url": self.ha_url,
+            "ha_zwave_path": self.ha_zwave_path,
+            "ha_verify_ssl": self.ha_verify_ssl,
+            "ha_token_masked": masked_ha_token,
         }

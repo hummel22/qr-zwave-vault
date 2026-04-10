@@ -48,9 +48,11 @@ createApp({
         new_password: "",
         github_repo: "",
         github_token: "",
+        github_token_masked: "",
         github_branch: "main",
         ha_url: "",
         ha_token: "",
+        ha_token_masked: "",
         ha_zwave_path: "/api/nodes",
         ha_verify_ssl: true,
       },
@@ -132,9 +134,11 @@ createApp({
         new_password: "",
         github_repo: settings.github_repo || "",
         github_token: "",
+        github_token_masked: settings.github_token_masked || "",
         github_branch: settings.github_branch || "main",
         ha_url: settings.ha_url || "",
         ha_token: "",
+        ha_token_masked: settings.ha_token_masked || "",
         ha_zwave_path: settings.ha_zwave_path || "/api/nodes",
         ha_verify_ssl: settings.ha_verify_ssl !== false,
       };
@@ -296,10 +300,10 @@ createApp({
         username: this.admin.username,
         new_password: this.admin.new_password || null,
         github_repo: this.admin.github_repo,
-        github_token: this.admin.github_token || null,
+        github_token: this.admin.github_token.trim() || undefined,
         github_branch: this.admin.github_branch,
         ha_url: this.admin.ha_url || null,
-        ha_token: this.admin.ha_token || null,
+        ha_token: this.admin.ha_token.trim() || undefined,
         ha_zwave_path: this.admin.ha_zwave_path || "/api/nodes",
         ha_verify_ssl: this.admin.ha_verify_ssl,
       };
@@ -309,15 +313,18 @@ createApp({
         body: JSON.stringify(payload),
       });
       if (!res.ok) return this.setMessage("Failed to save settings");
+      const body = await parseJsonSafely(res);
       this.admin.new_password = "";
       this.admin.github_token = "";
       this.admin.ha_token = "";
+      this.admin.github_token_masked = body?.settings?.github_token_masked || this.admin.github_token_masked;
+      this.admin.ha_token_masked = body?.settings?.ha_token_masked || this.admin.ha_token_masked;
       this.setMessage("Settings saved");
     },
     async testHomeAssistantConfig() {
       const payload = {
         ha_url: this.admin.ha_url || null,
-        ha_token: this.admin.ha_token || null,
+        ha_token: this.admin.ha_token.trim() || undefined,
         ha_zwave_path: this.admin.ha_zwave_path || "/api/nodes",
         ha_verify_ssl: this.admin.ha_verify_ssl,
       };

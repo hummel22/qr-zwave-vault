@@ -99,13 +99,21 @@
               <h3>Home Assistant / Z-Wave JS UI Config</h3>
               <p class="hint">Import-only flow for syncing node details into this vault.</p>
               <label class="stack field-label">
-                HA URL
+                Mode
+                <select v-model="admin.ha_mode">
+                  <option value="ingress">Home Assistant Ingress</option>
+                  <option value="direct">Direct Z-Wave JS UI</option>
+                </select>
+              </label>
+              <input v-model="admin.ha_addon_slug" placeholder="Addon slug (default: zwavejs2mqtt)" />
+              <label class="stack field-label">
+                Home Assistant URL
                 <span class="help-row">
-                  <input v-model="admin.ha_url" placeholder="http://zwave-js-ui.local:8091" />
+                  <input v-model="admin.ha_url" placeholder="https://homeassistant.local:8123" />
                   <button
                     class="help-btn"
                     type="button"
-                    title="Home Assistant add-on default (Ingress-only) is not reachable by this app. In Home Assistant: Settings → Add-ons → Z-Wave JS UI → Configuration → Network, enable the add-on port on your LAN, save, and restart the add-on. Then use http://<home-assistant-ip>:<port> (usually 8091)."
+                    title="Ingress mode uses this Home Assistant base URL. The service discovers the ingress route for the zwavejs2mqtt add-on and calls /api/nodes through Home Assistant."
                   >
                     ?
                   </button>
@@ -118,14 +126,24 @@
                   <button
                     class="help-btn"
                     type="button"
-                    title="In Home Assistant: click your profile (bottom-left) → scroll to Long-Lived Access Tokens → Create Token. Copy it once and paste it here."
+                    title="In Home Assistant: click your profile (bottom-left) → Long-Lived Access Tokens → Create Token."
                   >
                     ?
                   </button>
                 </span>
               </label>
               <p class="hint">{{ admin.ha_token ? 'A new Home Assistant token will replace the stored token when you save.' : (admin.ha_token_masked ? `Using saved token ${admin.ha_token_masked}` : 'No Home Assistant token saved yet.') }}</p>
+              <input v-model="admin.zwave_base_url" placeholder="Direct mode base URL (e.g. http://zwavejsui-host:8091)" />
+              <input v-model="admin.zwave_api_token" :placeholder="admin.zwave_api_token_masked ? `Stored token: ${admin.zwave_api_token_masked}` : 'Direct mode API token (optional)'" />
               <input v-model="admin.ha_zwave_path" placeholder="Z-Wave nodes API path (e.g. /api/nodes)" />
+              <label class="stack field-label">
+                Request timeout seconds
+                <input v-model.number="admin.request_timeout_seconds" type="number" min="1" max="60" />
+              </label>
+              <label class="stack field-label">
+                Retry count
+                <input v-model.number="admin.retry_count" type="number" min="0" max="5" />
+              </label>
               <label><input v-model="admin.ha_verify_ssl" type="checkbox" /> Verify SSL certificate</label>
               <div class="row wrap-row">
                 <button class="btn primary" type="button" @click="saveSettings">Save</button>

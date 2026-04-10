@@ -13,11 +13,10 @@
       <header class="menu-bar">
         <div class="menu-left">
           <button class="icon-btn" @click="toggleTheme" title="Toggle theme">🌓</button>
-          <button class="icon-btn" @click="openAdmin" title="Settings">⚙️</button>
           <h1>QR Z-Wave Vault</h1>
         </div>
         <div class="menu-right">
-          <button class="icon-btn" @click="openAdmin" title="Profile">👤</button>
+          <button class="icon-btn" @click="openProfile" title="Profile">👤</button>
         </div>
       </header>
 
@@ -42,7 +41,7 @@
         </form>
       </section>
 
-      <template v-else>
+      <template v-else-if="route === 'devices'">
         <section class="panel table-panel">
           <div class="row">
             <h2>Devices</h2>
@@ -70,6 +69,74 @@
         </section>
 
         <button class="fab" @click="openAddModal">＋</button>
+      </template>
+
+      <template v-else>
+        <section class="panel profile-panel stack">
+          <div class="row profile-header">
+            <h2>Profile</h2>
+            <button class="btn" @click="goToDevices">Back to Devices</button>
+          </div>
+
+          <div class="profile-grid">
+            <article class="panel stack profile-card">
+              <h3>GitHub Config</h3>
+              <p class="hint">Used for repository sync and force pull updates.</p>
+              <input v-model="admin.username" placeholder="Admin username" />
+              <input v-model="admin.new_password" type="password" minlength="8" placeholder="New password" />
+              <input v-model="admin.github_repo" placeholder="GitHub repo" />
+              <input v-model="admin.github_token" placeholder="GitHub token" />
+              <input v-model="admin.github_branch" placeholder="Branch" />
+              <div class="row wrap-row">
+                <button class="btn primary" type="button" @click="saveSettings">Save</button>
+                <button class="btn" type="button" @click="testRepoAuth">Test Repo Auth</button>
+                <button class="btn" type="button" @click="forcePull">Force Pull & Update</button>
+              </div>
+            </article>
+
+            <article class="panel stack profile-card">
+              <h3>Home Assistant / Z-Wave JS UI Config</h3>
+              <p class="hint">Import-only flow for syncing node details into this vault.</p>
+              <label class="stack field-label">
+                HA URL
+                <span class="help-row">
+                  <input v-model="admin.ha_url" placeholder="http://zwave-js-ui.local:8091" />
+                  <button
+                    class="help-btn"
+                    type="button"
+                    title="Use the direct URL where Z-Wave JS UI API is reachable, usually http://host:8091. If you run the HA add-on, expose it to your network first, then use that reachable URL."
+                  >
+                    ?
+                  </button>
+                </span>
+              </label>
+              <label class="stack field-label">
+                Long-lived Access Token
+                <span class="help-row">
+                  <input v-model="admin.ha_token" placeholder="Paste token" />
+                  <button
+                    class="help-btn"
+                    type="button"
+                    title="In Home Assistant: click your profile (bottom-left) → scroll to Long-Lived Access Tokens → Create Token. Copy it once and paste it here."
+                  >
+                    ?
+                  </button>
+                </span>
+              </label>
+              <input v-model="admin.ha_zwave_path" placeholder="Z-Wave nodes API path (e.g. /api/nodes)" />
+              <label><input v-model="admin.ha_verify_ssl" type="checkbox" /> Verify SSL certificate</label>
+              <div class="row wrap-row">
+                <button class="btn primary" type="button" @click="saveSettings">Save</button>
+                <button class="btn" type="button" @click="testHomeAssistantConfig">Test HA Config</button>
+                <button class="btn" type="button" @click="syncFromHomeAssistant">Sync from HA</button>
+              </div>
+            </article>
+          </div>
+
+          <div class="row wrap-row">
+            <button class="btn" @click="logout">Logout</button>
+          </div>
+        </section>
       </template>
 
       <dialog ref="deviceModal">
@@ -105,34 +172,6 @@
           <button class="btn primary" type="submit">Save Device</button>
         </form>
         <button class="btn" @click="stopScanner(); $refs.addModal.close()">Cancel</button>
-      </dialog>
-
-      <dialog ref="adminModal">
-        <h3>Admin Settings</h3>
-        <form class="stack" @submit.prevent="saveSettings">
-          <input v-model="admin.username" placeholder="Admin username" />
-          <input v-model="admin.new_password" type="password" minlength="8" placeholder="New password" />
-          <input v-model="admin.github_repo" placeholder="GitHub repo" />
-          <input v-model="admin.github_token" placeholder="GitHub token" />
-          <input v-model="admin.github_branch" placeholder="Branch" />
-          <hr />
-          <strong>Home Assistant + Z-Wave JS UI (Import only)</strong>
-          <input v-model="admin.ha_url" placeholder="Home Assistant/Z-Wave UI URL" />
-          <input v-model="admin.ha_token" placeholder="Long-lived access token" />
-          <input v-model="admin.ha_zwave_path" placeholder="Z-Wave nodes API path (e.g. /api/nodes)" />
-          <label><input v-model="admin.ha_verify_ssl" type="checkbox" /> Verify SSL certificate</label>
-          <div class="row">
-            <button class="btn primary" type="submit">Save</button>
-            <button class="btn" type="button" @click="testRepoAuth">Test Repo Auth</button>
-            <button class="btn" type="button" @click="forcePull">Force Pull & Update</button>
-            <button class="btn" type="button" @click="testHomeAssistantConfig">Test HA Config</button>
-            <button class="btn" type="button" @click="syncFromHomeAssistant">Sync from HA</button>
-          </div>
-        </form>
-        <div class="row">
-          <button class="btn" @click="logout">Logout</button>
-          <button class="btn" @click="$refs.adminModal.close()">Close</button>
-        </div>
       </dialog>
 
       <p v-if="message" class="message">{{ message }}</p>

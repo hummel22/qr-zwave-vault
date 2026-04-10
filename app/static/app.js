@@ -16,6 +16,7 @@ createApp({
       setupRequired: false,
       isAuthenticated: false,
       message: "",
+      route: "devices",
       theme: localStorage.getItem("theme") || "dark",
       devices: [],
       selectedDevice: null,
@@ -42,6 +43,8 @@ createApp({
     };
   },
   async mounted() {
+    this.route = this.getRouteFromLocation();
+    window.addEventListener("popstate", this.handlePopState);
     await this.bootstrap();
   },
   computed: {
@@ -59,6 +62,27 @@ createApp({
     toggleTheme() {
       this.theme = this.theme === "dark" ? "light" : "dark";
       localStorage.setItem("theme", this.theme);
+    },
+    getRouteFromLocation() {
+      const path = window.location.pathname || "/";
+      return path === "/profile" ? "profile" : "devices";
+    },
+    handlePopState() {
+      this.route = this.getRouteFromLocation();
+    },
+    navigateTo(route) {
+      const targetPath = route === "profile" ? "/profile" : "/";
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, "", targetPath);
+      }
+      this.route = route;
+    },
+    openProfile() {
+      if (!this.isAuthenticated) return;
+      this.navigateTo("profile");
+    },
+    goToDevices() {
+      this.navigateTo("devices");
     },
     async bootstrap() {
       const setupRes = await fetch("/api/v1/setup/status");
@@ -121,7 +145,10 @@ createApp({
     async logout() {
       await fetch("/api/v1/auth/logout", { method: "POST" });
       this.isAuthenticated = false;
-      this.$refs.adminModal.close();
+      this.route = "devices";
+      if (window.location.pathname !== "/") {
+        window.history.pushState({}, "", "/");
+      }
     },
     async loadDevices() {
       const params = new URLSearchParams();
@@ -243,10 +270,6 @@ createApp({
       await this.loadDevices();
       this.setMessage("Device deleted");
     },
-    openAdmin() {
-      if (!this.isAuthenticated) return;
-      this.$refs.adminModal.showModal();
-    },
     async saveSettings() {
       const payload = {
         username: this.admin.username,
@@ -271,7 +294,17 @@ createApp({
       this.setMessage("Settings saved");
     },
     async testHomeAssistantConfig() {
-      const res = await fetch("/api/v1/admin/test-home-assistant-config", { method: "POST" });
+      const payload = {
+        ha_url: this.admin.ha_url || null,
+        ha_token: this.admin.ha_token || null,
+        ha_zwave_path: this.admin.ha_zwave_path || "/api/nodes",
+        ha_verify_ssl: this.admin.ha_verify_ssl,
+      };
+      const res = await fetch("/api/v1/admin/test-home-assistant-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       const body = await parseJsonSafely(res);
       if (!res.ok) return this.setMessage("Config test failed");
       this.setMessage(body?.ok ? `Home Assistant config OK (${body?.count || 0} nodes)` : `HA config failed: ${body?.reason || "unknown"}`);
@@ -298,6 +331,7 @@ createApp({
     },
   },
   beforeUnmount() {
+    window.removeEventListener("popstate", this.handlePopState);
     this.stopScanner();
   },
 }).mount("#app");

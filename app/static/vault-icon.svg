@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Vault icon</title>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="48" height="48" rx="8" fill="url(#body)" />
+  <circle cx="32" cy="32" r="13" fill="none" stroke="#f8fafc" stroke-width="4" />
+  <circle cx="32" cy="32" r="3" fill="#f8fafc" />
+  <path d="M32 19v7M32 38v7M19 32h7M38 32h7" stroke="#f8fafc" stroke-width="3" stroke-linecap="round" />
+</svg>

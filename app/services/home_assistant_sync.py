@@ -52,7 +52,10 @@ class HomeAssistantSyncService:
         request = Request(url, headers=headers)
         context = None if verify_ssl else ssl._create_unverified_context()
         with urlopen(request, context=context, timeout=timeout_seconds) as response:
-            return json.loads(response.read().decode("utf-8"))
+            body = response.read().decode("utf-8")
+            if not body.strip():
+                raise ValueError("empty response from server")
+            return json.loads(body)
 
     def _request_json_with_retry(self, url: str, token: str | None, config: HomeAssistantSyncConfig) -> Any:
         attempts = config.retry_count + 1

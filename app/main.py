@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.models.device import DeviceCreate, DeviceRecord, DeviceRecordUpdate, build_device_record, normalize_dsk, now_utc, validate_uniqueness_or_raise
-from app.models.settings import LoginRequest, SettingsUpdateRequest, SetupBootstrapRequest, StoredSettings, hash_password, verify_password
+from app.models.settings import HomeAssistantConfigTestRequest, LoginRequest, SettingsUpdateRequest, SetupBootstrapRequest, StoredSettings, hash_password, verify_password
 from app.services.git_sync import GitSyncService
 from app.services.home_assistant_sync import HomeAssistantSyncService, build_record_from_candidate, merge_candidate
 from app.services.parser import extract_dsk
@@ -195,16 +195,20 @@ def admin_force_pull_update(request: Request) -> dict:
 
 
 @app.post("/api/v1/admin/test-home-assistant-config")
-def admin_test_home_assistant_config(request: Request) -> dict:
+def admin_test_home_assistant_config(request: Request, payload: HomeAssistantConfigTestRequest | None = None) -> dict:
     _require_auth(request)
     settings = _current_settings_or_404()
-    if not settings.ha_url or not settings.ha_token:
+    config_url = payload.ha_url if payload and payload.ha_url is not None else settings.ha_url
+    config_token = payload.ha_token if payload and payload.ha_token is not None else settings.ha_token
+    config_path = payload.ha_zwave_path if payload and payload.ha_zwave_path else settings.ha_zwave_path
+    config_verify_ssl = payload.ha_verify_ssl if payload and payload.ha_verify_ssl is not None else settings.ha_verify_ssl
+    if not config_url or not config_token:
         return {"ok": False, "reason": "missing_home_assistant_config", "count": 0}
     ok, reason, count = ha_sync.test_config(
-        base_url=settings.ha_url,
-        token=settings.ha_token,
-        zwave_path=settings.ha_zwave_path,
-        verify_ssl=settings.ha_verify_ssl,
+        base_url=config_url,
+        token=config_token,
+        zwave_path=config_path,
+        verify_ssl=config_verify_ssl,
     )
     return {"ok": ok, "reason": reason, "count": count}
 

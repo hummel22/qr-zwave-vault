@@ -183,10 +183,55 @@ img {
   opacity: 0.9;
 }
 
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.profile-card {
+  margin: 0;
+}
+
+.profile-header {
+  justify-content: space-between;
+}
+
+.field-label {
+  gap: 0.35rem;
+}
+
+.help-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.help-btn {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--c-accent) 60%, black 40%);
+  background: color-mix(in oklab, var(--c-accent) 65%, black 35%);
+  color: #001b1d;
+  cursor: help;
+  padding: 0;
+  line-height: 1;
+}
+
+.wrap-row {
+  flex-wrap: wrap;
+}
+
 @media (max-width: 700px) {
   .menu-bar,
   .row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .profile-grid {
+    grid-template-columns: 1fr;
   }
 }

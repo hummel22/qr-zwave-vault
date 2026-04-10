@@ -58,6 +58,15 @@ class SettingsUpdateRequest(BaseModel):
     ha_verify_ssl: bool | None = None
 
 
+class HomeAssistantConfigTestRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    ha_url: str | None = Field(default=None, min_length=1, max_length=300)
+    ha_token: str | None = Field(default=None, min_length=1, max_length=300)
+    ha_zwave_path: str | None = Field(default=None, min_length=1, max_length=120)
+    ha_verify_ssl: bool | None = None
+
+
 @dataclass
 class StoredSettings:
     username: str

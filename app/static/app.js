@@ -1,4 +1,18 @@
 const { createApp } = Vue;
+const APP_STATE_COOKIE_AGE_SECONDS = 60 * 60 * 24 * 365;
+
+function setCookie(name, value, maxAgeSeconds = APP_STATE_COOKIE_AGE_SECONDS) {
+  const encoded = encodeURIComponent(String(value));
+  document.cookie = `${name}=${encoded}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax`;
+}
+
+function getCookie(name) {
+  const key = `${name}=`;
+  const parts = document.cookie.split(";").map((part) => part.trim());
+  const match = parts.find((part) => part.startsWith(key));
+  if (!match) return null;
+  return decodeURIComponent(match.slice(key.length));
+}
 
 async function parseJsonSafely(response) {
   const text = await response.text();
@@ -17,12 +31,12 @@ createApp({
       isAuthenticated: false,
       message: "",
       route: "devices",
-      theme: localStorage.getItem("theme") || "dark",
+      theme: getCookie("theme") === "light" ? "light" : "dark",
       devices: [],
       selectedDevice: null,
       form: { device_name: "", raw_value: "", location: "", description: "" },
       editForm: { device_name: "", location: "", description: "" },
-      filters: { q: "" },
+      filters: { q: getCookie("devices_filter_q") || "" },
       setup: { username: "", password: "", github_repo: "", github_token: "", github_branch: "main" },
       loginForm: { username: "", password: "" },
       scannerActive: false,
@@ -61,14 +75,19 @@ createApp({
     },
     toggleTheme() {
       this.theme = this.theme === "dark" ? "light" : "dark";
-      localStorage.setItem("theme", this.theme);
+      setCookie("theme", this.theme);
     },
     getRouteFromLocation() {
       const path = window.location.pathname || "/";
-      return path === "/profile" ? "profile" : "devices";
+      if (path === "/profile") return "profile";
+      if (path === "/") {
+        return getCookie("route") === "profile" ? "profile" : "devices";
+      }
+      return "devices";
     },
     handlePopState() {
       this.route = this.getRouteFromLocation();
+      setCookie("route", this.route);
     },
     navigateTo(route) {
       const targetPath = route === "profile" ? "/profile" : "/";
@@ -76,6 +95,7 @@ createApp({
         window.history.pushState({}, "", targetPath);
       }
       this.route = route;
+      setCookie("route", route);
     },
     openProfile() {
       if (!this.isAuthenticated) return;
@@ -153,6 +173,7 @@ createApp({
     async loadDevices() {
       const params = new URLSearchParams();
       if (this.filters.q) params.set("q", this.filters.q);
+      setCookie("devices_filter_q", this.filters.q || "");
       const res = await fetch(`/api/v1/devices?${params.toString()}`);
       if (res.status === 401) {
         this.isAuthenticated = false;

@@ -89,9 +89,6 @@ createApp({
     getRouteFromLocation() {
       const path = window.location.pathname || "/";
       if (path === "/profile") return "profile";
-      if (path === "/") {
-        return getCookie("route") === "profile" ? "profile" : "devices";
-      }
       return "devices";
     },
     handlePopState() {

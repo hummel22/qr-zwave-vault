@@ -85,7 +85,8 @@
               <input v-model="admin.username" placeholder="Admin username" />
               <input v-model="admin.new_password" type="password" minlength="8" placeholder="New password" />
               <input v-model="admin.github_repo" placeholder="GitHub repo" />
-              <input v-model="admin.github_token" placeholder="GitHub token" />
+              <input v-model="admin.github_token" :placeholder="admin.github_token_masked ? `Stored token: ${admin.github_token_masked}` : 'GitHub token'" />
+              <p class="hint">{{ admin.github_token ? 'A new GitHub token will replace the stored token when you save.' : (admin.github_token_masked ? `Using saved token ${admin.github_token_masked}` : 'No GitHub token saved yet.') }}</p>
               <input v-model="admin.github_branch" placeholder="Branch" />
               <div class="row wrap-row">
                 <button class="btn primary" type="button" @click="saveSettings">Save</button>
@@ -104,7 +105,7 @@
                   <button
                     class="help-btn"
                     type="button"
-                    title="Use the direct URL where Z-Wave JS UI API is reachable, usually http://host:8091. If you run the HA add-on, expose it to your network first, then use that reachable URL."
+                    title="Home Assistant add-on default (Ingress-only) is not reachable by this app. In Home Assistant: Settings → Add-ons → Z-Wave JS UI → Configuration → Network, enable the add-on port on your LAN, save, and restart the add-on. Then use http://<home-assistant-ip>:<port> (usually 8091)."
                   >
                     ?
                   </button>
@@ -113,7 +114,7 @@
               <label class="stack field-label">
                 Long-lived Access Token
                 <span class="help-row">
-                  <input v-model="admin.ha_token" placeholder="Paste token" />
+                  <input v-model="admin.ha_token" :placeholder="admin.ha_token_masked ? `Stored token: ${admin.ha_token_masked}` : 'Paste token'" />
                   <button
                     class="help-btn"
                     type="button"
@@ -123,6 +124,7 @@
                   </button>
                 </span>
               </label>
+              <p class="hint">{{ admin.ha_token ? 'A new Home Assistant token will replace the stored token when you save.' : (admin.ha_token_masked ? `Using saved token ${admin.ha_token_masked}` : 'No Home Assistant token saved yet.') }}</p>
               <input v-model="admin.ha_zwave_path" placeholder="Z-Wave nodes API path (e.g. /api/nodes)" />
               <label><input v-model="admin.ha_verify_ssl" type="checkbox" /> Verify SSL certificate</label>
               <div class="row wrap-row">

@@ -99,7 +99,8 @@ def test_home_assistant_sync_imports_and_updates() -> None:
     save = client.put(
         "/api/v1/admin/settings",
         json={
-            "ha_url": "http://ha.local:8091",
+            "ha_mode": "direct",
+            "zwave_base_url": "http://ha.local:8091",
             "ha_token": "token_123",
             "ha_zwave_path": "/api/nodes",
             "ha_verify_ssl": False,
@@ -108,14 +109,15 @@ def test_home_assistant_sync_imports_and_updates() -> None:
     assert save.status_code == 200
 
     class FakeHASync:
-        def test_config(self, base_url: str, token: str, zwave_path: str, verify_ssl: bool):
-            assert base_url == "http://ha.local:8091"
-            assert token == "token_123"
-            assert zwave_path == "/api/nodes"
-            assert verify_ssl is False
+        def test_config(self, config):
+            assert config.mode == "direct"
+            assert config.zwave_base_url == "http://ha.local:8091"
+            assert config.ha_auth_token == "token_123"
+            assert config.zwave_path == "/api/nodes"
+            assert config.verify_ssl is False
             return True, "ok", 2
 
-        def fetch_nodes(self, base_url: str, token: str, zwave_path: str, verify_ssl: bool):
+        def fetch_nodes(self, config):
             return [
                 HomeAssistantNodeCandidate(
                     node_id="14",
@@ -161,7 +163,8 @@ def test_settings_merge_keeps_existing_tokens_when_not_replaced() -> None:
     save = client.put(
         "/api/v1/admin/settings",
         json={
-            "ha_url": "http://ha.local:8091",
+            "ha_mode": "direct",
+            "zwave_base_url": "http://ha.local:8091",
             "ha_token": "token_123",
             "ha_zwave_path": "/api/nodes",
             "ha_verify_ssl": False,
@@ -171,11 +174,12 @@ def test_settings_merge_keeps_existing_tokens_when_not_replaced() -> None:
     assert save.json()["settings"]["ha_token_masked"] != ""
 
     class FakeHASync:
-        def test_config(self, base_url: str, token: str, zwave_path: str, verify_ssl: bool):
-            assert base_url == "http://ha.local:8092"
-            assert token == "token_123"
-            assert zwave_path == "/api/devices"
-            assert verify_ssl is False
+        def test_config(self, config):
+            assert config.mode == "direct"
+            assert config.zwave_base_url == "http://ha.local:8092"
+            assert config.ha_auth_token == "token_123"
+            assert config.zwave_path == "/api/devices"
+            assert config.verify_ssl is False
             return True, "ok", 0
 
     original = main_module.ha_sync
@@ -184,20 +188,20 @@ def test_settings_merge_keeps_existing_tokens_when_not_replaced() -> None:
         update_without_tokens = client.put(
             "/api/v1/admin/settings",
             json={
-                "ha_url": "http://ha.local:8092",
+                "zwave_base_url": "http://ha.local:8092",
                 "ha_zwave_path": "/api/devices",
             },
         )
         assert update_without_tokens.status_code == 200
         body = update_without_tokens.json()
-        assert body["settings"]["ha_url"] == "http://ha.local:8092"
+        assert body["settings"]["zwave_base_url"] == "http://ha.local:8092"
         assert body["settings"]["ha_zwave_path"] == "/api/devices"
         assert body["settings"]["ha_token_masked"] != ""
         assert body["settings"]["github_token_masked"] != ""
 
         test_config = client.post(
             "/api/v1/admin/test-home-assistant-config",
-            json={"ha_url": "http://ha.local:8092", "ha_zwave_path": "/api/devices"},
+            json={"ha_mode": "direct", "zwave_base_url": "http://ha.local:8092", "ha_zwave_path": "/api/devices"},
         )
         assert test_config.status_code == 200
         assert test_config.json()["ok"] is True

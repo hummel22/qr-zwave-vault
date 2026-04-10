@@ -53,8 +53,15 @@ createApp({
         ha_url: "",
         ha_token: "",
         ha_token_masked: "",
+        ha_mode: "ingress",
+        ha_addon_slug: "zwavejs2mqtt",
+        zwave_base_url: "",
+        zwave_api_token: "",
+        zwave_api_token_masked: "",
         ha_zwave_path: "/api/nodes",
         ha_verify_ssl: true,
+        request_timeout_seconds: 10,
+        retry_count: 3,
       },
     };
   },
@@ -139,8 +146,15 @@ createApp({
         ha_url: settings.ha_url || "",
         ha_token: "",
         ha_token_masked: settings.ha_token_masked || "",
+        ha_mode: settings.ha_mode || "ingress",
+        ha_addon_slug: settings.ha_addon_slug || "zwavejs2mqtt",
+        zwave_base_url: settings.zwave_base_url || "",
+        zwave_api_token: "",
+        zwave_api_token_masked: settings.zwave_api_token_masked || "",
         ha_zwave_path: settings.ha_zwave_path || "/api/nodes",
         ha_verify_ssl: settings.ha_verify_ssl !== false,
+        request_timeout_seconds: settings.request_timeout_seconds || 10,
+        retry_count: settings.retry_count ?? 3,
       };
       await this.loadDevices();
     },
@@ -304,8 +318,14 @@ createApp({
         github_branch: this.admin.github_branch,
         ha_url: this.admin.ha_url || null,
         ha_token: this.admin.ha_token.trim() || undefined,
+        ha_mode: this.admin.ha_mode || "ingress",
+        ha_addon_slug: this.admin.ha_addon_slug || "zwavejs2mqtt",
+        zwave_base_url: this.admin.zwave_base_url || null,
+        zwave_api_token: this.admin.zwave_api_token.trim() || undefined,
         ha_zwave_path: this.admin.ha_zwave_path || "/api/nodes",
         ha_verify_ssl: this.admin.ha_verify_ssl,
+        request_timeout_seconds: this.admin.request_timeout_seconds || 10,
+        retry_count: Number.isFinite(this.admin.retry_count) ? this.admin.retry_count : 3,
       };
       const res = await fetch("/api/v1/admin/settings", {
         method: "PUT",
@@ -317,16 +337,24 @@ createApp({
       this.admin.new_password = "";
       this.admin.github_token = "";
       this.admin.ha_token = "";
+      this.admin.zwave_api_token = "";
       this.admin.github_token_masked = body?.settings?.github_token_masked || this.admin.github_token_masked;
       this.admin.ha_token_masked = body?.settings?.ha_token_masked || this.admin.ha_token_masked;
+      this.admin.zwave_api_token_masked = body?.settings?.zwave_api_token_masked || this.admin.zwave_api_token_masked;
       this.setMessage("Settings saved");
     },
     async testHomeAssistantConfig() {
       const payload = {
         ha_url: this.admin.ha_url || null,
         ha_token: this.admin.ha_token.trim() || undefined,
+        ha_mode: this.admin.ha_mode || "ingress",
+        ha_addon_slug: this.admin.ha_addon_slug || "zwavejs2mqtt",
+        zwave_base_url: this.admin.zwave_base_url || null,
+        zwave_api_token: this.admin.zwave_api_token.trim() || undefined,
         ha_zwave_path: this.admin.ha_zwave_path || "/api/nodes",
         ha_verify_ssl: this.admin.ha_verify_ssl,
+        request_timeout_seconds: this.admin.request_timeout_seconds || 10,
+        retry_count: Number.isFinite(this.admin.retry_count) ? this.admin.retry_count : 3,
       };
       const res = await fetch("/api/v1/admin/test-home-assistant-config", {
         method: "POST",

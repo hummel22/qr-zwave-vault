@@ -56,6 +56,12 @@ class SettingsUpdateRequest(BaseModel):
     ha_token: str | None = Field(default=None, min_length=1, max_length=300)
     ha_zwave_path: str | None = Field(default=None, min_length=1, max_length=120)
     ha_verify_ssl: bool | None = None
+    ha_mode: str | None = Field(default=None, pattern="^(ingress|direct)$")
+    ha_addon_slug: str | None = Field(default=None, min_length=1, max_length=120)
+    zwave_base_url: str | None = Field(default=None, min_length=1, max_length=300)
+    zwave_api_token: str | None = Field(default=None, min_length=1, max_length=300)
+    request_timeout_seconds: int | None = Field(default=None, ge=1, le=60)
+    retry_count: int | None = Field(default=None, ge=0, le=5)
 
 
 class HomeAssistantConfigTestRequest(BaseModel):
@@ -65,6 +71,12 @@ class HomeAssistantConfigTestRequest(BaseModel):
     ha_token: str | None = Field(default=None, min_length=1, max_length=300)
     ha_zwave_path: str | None = Field(default=None, min_length=1, max_length=120)
     ha_verify_ssl: bool | None = None
+    ha_mode: str | None = Field(default=None, pattern="^(ingress|direct)$")
+    ha_addon_slug: str | None = Field(default=None, min_length=1, max_length=120)
+    zwave_base_url: str | None = Field(default=None, min_length=1, max_length=300)
+    zwave_api_token: str | None = Field(default=None, min_length=1, max_length=300)
+    request_timeout_seconds: int | None = Field(default=None, ge=1, le=60)
+    retry_count: int | None = Field(default=None, ge=0, le=5)
 
 
 @dataclass
@@ -79,6 +91,12 @@ class StoredSettings:
     ha_token: str | None = None
     ha_zwave_path: str = "/api/nodes"
     ha_verify_ssl: bool = True
+    ha_mode: str = "ingress"
+    ha_addon_slug: str = "zwavejs2mqtt"
+    zwave_base_url: str | None = None
+    zwave_api_token: str | None = None
+    request_timeout_seconds: int = 10
+    retry_count: int = 3
 
     def masked(self) -> dict:
         token = self.github_token
@@ -93,6 +111,13 @@ class StoredSettings:
             masked_ha_token = "*" * len(ha_token)
         else:
             masked_ha_token = f"{ha_token[:4]}…{ha_token[-4:]}"
+        zwave_api_token = self.zwave_api_token or ""
+        if not zwave_api_token:
+            masked_zwave_api_token = ""
+        elif len(zwave_api_token) <= 8:
+            masked_zwave_api_token = "*" * len(zwave_api_token)
+        else:
+            masked_zwave_api_token = f"{zwave_api_token[:4]}…{zwave_api_token[-4:]}"
         return {
             "username": self.username,
             "github_repo": self.github_repo,
@@ -102,4 +127,10 @@ class StoredSettings:
             "ha_zwave_path": self.ha_zwave_path,
             "ha_verify_ssl": self.ha_verify_ssl,
             "ha_token_masked": masked_ha_token,
+            "ha_mode": self.ha_mode,
+            "ha_addon_slug": self.ha_addon_slug,
+            "zwave_base_url": self.zwave_base_url,
+            "request_timeout_seconds": self.request_timeout_seconds,
+            "retry_count": self.retry_count,
+            "zwave_api_token_masked": masked_zwave_api_token,
         }

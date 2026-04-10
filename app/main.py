@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.models.device import DeviceCreate, DeviceRecord, DeviceRecordUpdate, build_device_record, normalize_dsk, now_utc, validate_uniqueness_or_raise
 from app.models.settings import HomeAssistantConfigTestRequest, LoginRequest, SettingsUpdateRequest, SetupBootstrapRequest, StoredSettings, hash_password, verify_password
 from app.services.git_sync import GitSyncService
-from app.services.home_assistant_sync import HomeAssistantSyncService, build_record_from_candidate, merge_candidate
+from app.services.home_assistant_sync import HomeAssistantSyncConfig, HomeAssistantSyncService, build_record_from_candidate, merge_candidate
 from app.services.parser import extract_dsk
 from app.storage.device_store import DeviceStore
 from app.storage.settings_store import SettingsStore
@@ -106,6 +106,10 @@ def setup_bootstrap(payload: SetupBootstrapRequest) -> dict:
         github_token=payload.github_token,
         github_branch=payload.github_branch,
         ha_zwave_path="/api/nodes",
+        ha_mode="ingress",
+        ha_addon_slug="zwavejs2mqtt",
+        request_timeout_seconds=10,
+        retry_count=3,
     )
     settings_store.save(settings)
     sync.configure(settings.github_repo, settings.github_token, settings.github_branch)
@@ -170,6 +174,12 @@ def admin_settings_update(payload: SettingsUpdateRequest, request: Request) -> d
         ha_token=payload.ha_token if payload.ha_token is not None else settings.ha_token,
         ha_zwave_path=payload.ha_zwave_path or settings.ha_zwave_path,
         ha_verify_ssl=payload.ha_verify_ssl if payload.ha_verify_ssl is not None else settings.ha_verify_ssl,
+        ha_mode=payload.ha_mode or settings.ha_mode,
+        ha_addon_slug=payload.ha_addon_slug or settings.ha_addon_slug,
+        zwave_base_url=payload.zwave_base_url if payload.zwave_base_url is not None else settings.zwave_base_url,
+        zwave_api_token=payload.zwave_api_token if payload.zwave_api_token is not None else settings.zwave_api_token,
+        request_timeout_seconds=payload.request_timeout_seconds or settings.request_timeout_seconds,
+        retry_count=payload.retry_count if payload.retry_count is not None else settings.retry_count,
     )
     settings_store.save(updated)
     sync.configure(updated.github_repo, updated.github_token, updated.github_branch)
@@ -198,18 +208,23 @@ def admin_force_pull_update(request: Request) -> dict:
 def admin_test_home_assistant_config(request: Request, payload: HomeAssistantConfigTestRequest | None = None) -> dict:
     _require_auth(request)
     settings = _current_settings_or_404()
-    config_url = payload.ha_url if payload and payload.ha_url is not None else settings.ha_url
-    config_token = payload.ha_token if payload and payload.ha_token is not None else settings.ha_token
-    config_path = payload.ha_zwave_path if payload and payload.ha_zwave_path else settings.ha_zwave_path
-    config_verify_ssl = payload.ha_verify_ssl if payload and payload.ha_verify_ssl is not None else settings.ha_verify_ssl
-    if not config_url or not config_token:
-        return {"ok": False, "reason": "missing_home_assistant_config", "count": 0}
-    ok, reason, count = ha_sync.test_config(
-        base_url=config_url,
-        token=config_token,
-        zwave_path=config_path,
-        verify_ssl=config_verify_ssl,
+    config = HomeAssistantSyncConfig(
+        mode=payload.ha_mode if payload and payload.ha_mode else settings.ha_mode,
+        ha_base_url=payload.ha_url if payload and payload.ha_url is not None else settings.ha_url,
+        ha_auth_token=payload.ha_token if payload and payload.ha_token is not None else settings.ha_token,
+        addon_slug=payload.ha_addon_slug if payload and payload.ha_addon_slug else settings.ha_addon_slug,
+        zwave_base_url=payload.zwave_base_url if payload and payload.zwave_base_url is not None else settings.zwave_base_url,
+        zwave_api_token=payload.zwave_api_token if payload and payload.zwave_api_token is not None else settings.zwave_api_token,
+        request_timeout_seconds=payload.request_timeout_seconds if payload and payload.request_timeout_seconds else settings.request_timeout_seconds,
+        retry_count=payload.retry_count if payload and payload.retry_count is not None else settings.retry_count,
+        verify_ssl=payload.ha_verify_ssl if payload and payload.ha_verify_ssl is not None else settings.ha_verify_ssl,
+        zwave_path=payload.ha_zwave_path if payload and payload.ha_zwave_path else settings.ha_zwave_path,
     )
+    if config.mode == "ingress" and (not config.ha_base_url or not config.ha_auth_token):
+        return {"ok": False, "reason": "missing_home_assistant_config", "count": 0}
+    if config.mode == "direct" and not config.zwave_base_url:
+        return {"ok": False, "reason": "missing_zwave_base_url", "count": 0}
+    ok, reason, count = ha_sync.test_config(config)
     return {"ok": ok, "reason": reason, "count": count}
 
 
@@ -217,15 +232,24 @@ def admin_test_home_assistant_config(request: Request, payload: HomeAssistantCon
 def admin_sync_from_home_assistant(request: Request) -> dict:
     _require_auth(request)
     settings = _current_settings_or_404()
-    if not settings.ha_url or not settings.ha_token:
-        raise HTTPException(status_code=400, detail="missing_home_assistant_config")
-
-    candidates = ha_sync.fetch_nodes(
-        base_url=settings.ha_url,
-        token=settings.ha_token,
-        zwave_path=settings.ha_zwave_path,
+    config = HomeAssistantSyncConfig(
+        mode=settings.ha_mode,
+        ha_base_url=settings.ha_url,
+        ha_auth_token=settings.ha_token,
+        addon_slug=settings.ha_addon_slug,
+        zwave_base_url=settings.zwave_base_url,
+        zwave_api_token=settings.zwave_api_token,
+        request_timeout_seconds=settings.request_timeout_seconds,
+        retry_count=settings.retry_count,
         verify_ssl=settings.ha_verify_ssl,
+        zwave_path=settings.ha_zwave_path,
     )
+    if config.mode == "ingress" and (not config.ha_base_url or not config.ha_auth_token):
+        raise HTTPException(status_code=400, detail="missing_home_assistant_config")
+    if config.mode == "direct" and not config.zwave_base_url:
+        raise HTTPException(status_code=400, detail="missing_zwave_base_url")
+
+    candidates = ha_sync.fetch_nodes(config)
     existing = store.list_all()
     by_dsk = {item.dsk: item for item in existing}
     created = 0

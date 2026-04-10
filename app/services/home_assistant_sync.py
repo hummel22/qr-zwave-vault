@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import ssl
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
 from app.models.device import DeviceCreate, DeviceRecord, build_device_record, normalize_dsk, now_utc
@@ -22,27 +24,60 @@ class HomeAssistantNodeCandidate:
     metadata: dict[str, Any] | None = None
 
 
+@dataclass
+class HomeAssistantSyncConfig:
+    mode: str = "ingress"
+    ha_base_url: str | None = None
+    ha_auth_token: str | None = None
+    addon_slug: str = "zwavejs2mqtt"
+    zwave_base_url: str | None = None
+    zwave_api_token: str | None = None
+    request_timeout_seconds: int = 10
+    retry_count: int = 3
+    verify_ssl: bool = True
+    zwave_path: str = "/api/nodes"
+
+
 class HomeAssistantSyncService:
-    def _request_json(self, url: str, token: str, verify_ssl: bool) -> Any:
-        request = Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+    def _request_json(
+        self,
+        url: str,
+        token: str | None,
+        verify_ssl: bool,
+        timeout_seconds: int,
+    ) -> Any:
+        headers = {"Accept": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        request = Request(url, headers=headers)
         context = None if verify_ssl else ssl._create_unverified_context()
-        with urlopen(request, context=context, timeout=12) as response:
+        with urlopen(request, context=context, timeout=timeout_seconds) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    def _extract_candidates(self, payload: Any) -> list[HomeAssistantNodeCandidate]:
-        raw_nodes: list[dict[str, Any]]
-        if isinstance(payload, list):
-            raw_nodes = [item for item in payload if isinstance(item, dict)]
-        elif isinstance(payload, dict):
-            if isinstance(payload.get("result"), list):
-                raw_nodes = [item for item in payload["result"] if isinstance(item, dict)]
-            elif isinstance(payload.get("nodes"), list):
-                raw_nodes = [item for item in payload["nodes"] if isinstance(item, dict)]
-            else:
-                raw_nodes = []
-        else:
-            raw_nodes = []
+    def _request_json_with_retry(self, url: str, token: str | None, config: HomeAssistantSyncConfig) -> Any:
+        attempts = config.retry_count + 1
+        last_error: Exception | None = None
+        for _ in range(attempts):
+            try:
+                return self._request_json(url, token, config.verify_ssl, config.request_timeout_seconds)
+            except (URLError, TimeoutError) as exc:
+                last_error = exc
+        if last_error:
+            raise last_error
+        return {}
 
+    def _extract_nodes_from_payload(self, payload: Any) -> list[dict[str, Any]]:
+        if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+            return [item for item in payload["data"] if isinstance(item, dict)]
+        if isinstance(payload, dict) and isinstance(payload.get("nodes"), list):
+            return [item for item in payload["nodes"] if isinstance(item, dict)]
+        if isinstance(payload, dict) and isinstance(payload.get("result"), list):
+            return [item for item in payload["result"] if isinstance(item, dict)]
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        return []
+
+    def _to_candidates(self, mode: str, raw_nodes: list[dict[str, Any]]) -> list[HomeAssistantNodeCandidate]:
         candidates: list[HomeAssistantNodeCandidate] = []
         for node in raw_nodes:
             dsk = str(node.get("dsk") or node.get("securityCode") or "").strip()
@@ -63,27 +98,85 @@ class HomeAssistantSyncService:
                     description=description,
                     manufacturer=manufacturer,
                     model=model,
-                    metadata={"source": "home-assistant", "zwave_node": node},
+                    metadata={"source": "home-assistant", "mode": mode, "zwave_node": node},
                 )
             )
         return candidates
 
-    def fetch_nodes(self, base_url: str, token: str, zwave_path: str, verify_ssl: bool) -> list[HomeAssistantNodeCandidate]:
-        normalized_base = base_url.rstrip("/")
-        normalized_path = zwave_path if zwave_path.startswith("/") else f"/{zwave_path}"
-        payload = self._request_json(f"{normalized_base}{normalized_path}", token, verify_ssl)
-        return self._extract_candidates(payload)
+    def _resolve_ingress_base(self, config: HomeAssistantSyncConfig) -> str:
+        if not config.ha_base_url or not config.ha_auth_token:
+            raise ValueError("missing_home_assistant_config")
+        base = config.ha_base_url.rstrip("/")
+        info_url = f"{base}/api/hassio/addons/{config.addon_slug}/info"
+        payload = self._request_json_with_retry(info_url, config.ha_auth_token, config)
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            raise ValueError("ingress_discovery_failed")
+        if data.get("state") != "started":
+            raise ValueError("addon_not_started")
+        if data.get("ingress") is not True:
+            raise ValueError("ingress_disabled_or_unavailable")
+        ingress_url = str(data.get("ingress_url") or "").strip()
+        ingress_entry = str(data.get("ingress_entry") or "").strip()
+        ingress_base = ingress_url or ingress_entry
+        if not ingress_base:
+            raise ValueError("ingress_discovery_failed")
+        return urljoin(f"{base}/", ingress_base.lstrip("/"))
 
-    def test_config(self, base_url: str, token: str, zwave_path: str, verify_ssl: bool) -> tuple[bool, str, int]:
+    def fetch_nodes_normalized(self, config: HomeAssistantSyncConfig) -> dict[str, Any]:
+        if config.mode == "ingress":
+            base_url = self._resolve_ingress_base(config)
+            auth_token = config.ha_auth_token
+        elif config.mode == "direct":
+            if not config.zwave_base_url:
+                raise ValueError("missing_zwave_base_url")
+            base_url = config.zwave_base_url.rstrip("/")
+            auth_token = config.zwave_api_token
+        else:
+            raise ValueError("unsupported_mode")
+
+        path = config.zwave_path if config.zwave_path.startswith("/") else f"/{config.zwave_path}"
+        payload = self._request_json_with_retry(f"{base_url}{path}", auth_token, config)
+        raw_nodes = self._extract_nodes_from_payload(payload)
+        normalized_nodes = [
+            {
+                "id": node.get("id") or node.get("nodeId"),
+                "name": node.get("name") or node.get("device"),
+                "status": node.get("status") or node.get("state") or "unknown",
+                "manufacturer": node.get("manufacturer") or node.get("manufacturerName"),
+                "raw": node,
+            }
+            for node in raw_nodes
+        ]
+        return {
+            "source": "zwave_js_ui",
+            "mode": config.mode,
+            "fetched_at": datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+            "nodes": normalized_nodes,
+        }
+
+    def fetch_nodes(self, config: HomeAssistantSyncConfig) -> list[HomeAssistantNodeCandidate]:
+        normalized = self.fetch_nodes_normalized(config)
+        return self._to_candidates(config.mode, [item["raw"] for item in normalized["nodes"]])
+
+    def test_config(self, config: HomeAssistantSyncConfig) -> tuple[bool, str, int]:
         try:
-            nodes = self.fetch_nodes(base_url, token, zwave_path, verify_ssl)
-            return True, "ok", len(nodes)
+            normalized = self.fetch_nodes_normalized(config)
+            return True, "ok", len(normalized["nodes"])
         except HTTPError as exc:
-            return False, f"http_error:{exc.code}", 0
+            if exc.code in (401, 403):
+                reason = "auth_failure"
+            elif exc.code == 404:
+                reason = "api_not_found"
+            else:
+                reason = f"api_http_error:{exc.code}"
+            return False, reason, 0
         except URLError as exc:
-            return False, f"connection_error:{exc.reason}", 0
+            return False, f"api_transport_error:{exc.reason}", 0
         except TimeoutError:
-            return False, "timeout", 0
+            return False, "api_transport_timeout", 0
+        except ValueError as exc:
+            return False, str(exc), 0
         except Exception as exc:  # pragma: no cover - defensive fallback
             return False, f"unexpected_error:{exc}", 0
 

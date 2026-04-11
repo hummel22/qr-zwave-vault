@@ -43,6 +43,9 @@ createApp({
       scannerStream: null,
       scannerTimer: null,
       barcodeDetector: null,
+      syncPreview: [],
+      syncPreviewLoading: false,
+      syncImporting: false,
       admin: {
         username: "",
         new_password: "",
@@ -73,6 +76,20 @@ createApp({
   computed: {
     canScanWithCamera() {
       return !!(window.BarcodeDetector && navigator.mediaDevices?.getUserMedia);
+    },
+    syncPreviewCounts() {
+      const counts = { new: 0, update: 0, unchanged: 0, skip: 0 };
+      for (const item of this.syncPreview) {
+        if (item.action in counts) counts[item.action]++;
+      }
+      return counts;
+    },
+    syncSelectedCount() {
+      return this.syncPreview.filter((i) => i.selected).length;
+    },
+    allSyncItemsSelected() {
+      const selectable = this.syncPreview.filter((i) => i.action === "new" || i.action === "update");
+      return selectable.length > 0 && selectable.every((i) => i.selected);
     },
   },
   methods: {
@@ -363,14 +380,50 @@ createApp({
       this.setMessage(body?.ok ? `Home Assistant config OK (${body?.count || 0} nodes)` : `HA config failed: ${body?.reason || "unknown"}`);
     },
     async syncFromHomeAssistant() {
-      const res = await fetch("/api/v1/admin/sync-from-home-assistant", { method: "POST" });
-      const body = await parseJsonSafely(res);
-      if (!res.ok) {
-        return this.setMessage(body?.detail || "Home Assistant sync failed");
+      this.syncPreview = [];
+      this.syncPreviewLoading = true;
+      this.syncImporting = false;
+      this.$refs.syncPreviewModal.showModal();
+      try {
+        const res = await fetch("/api/v1/admin/preview-home-assistant-sync", { method: "POST" });
+        const body = await parseJsonSafely(res);
+        if (!res.ok) {
+          this.$refs.syncPreviewModal.close();
+          return this.setMessage(body?.detail || "Failed to fetch HA preview");
+        }
+        this.syncPreview = (body?.preview || []).map((item) => ({
+          ...item,
+          selected: item.action === "new" || item.action === "update",
+        }));
+      } catch {
+        this.$refs.syncPreviewModal.close();
+        this.setMessage("Failed to connect to Home Assistant");
+      } finally {
+        this.syncPreviewLoading = false;
       }
-      const results = body?.results || {};
-      await this.loadDevices();
-      this.setMessage(`HA sync done: +${results.created || 0} new, ${results.updated || 0} updated, ${results.skipped || 0} skipped`);
+    },
+    toggleAllSyncItems() {
+      const selectable = this.syncPreview.filter((i) => i.action === "new" || i.action === "update");
+      const allSelected = selectable.every((i) => i.selected);
+      selectable.forEach((i) => (i.selected = !allSelected));
+    },
+    async confirmSync() {
+      this.syncImporting = true;
+      try {
+        const res = await fetch("/api/v1/admin/sync-from-home-assistant", { method: "POST" });
+        const body = await parseJsonSafely(res);
+        if (!res.ok) {
+          return this.setMessage(body?.detail || "Home Assistant sync failed");
+        }
+        const results = body?.results || {};
+        await this.loadDevices();
+        this.$refs.syncPreviewModal.close();
+        this.setMessage(`HA sync complete: +${results.created || 0} new, ${results.updated || 0} updated, ${results.skipped || 0} skipped`);
+      } catch {
+        this.setMessage("Sync request failed");
+      } finally {
+        this.syncImporting = false;
+      }
     },
     async testRepoAuth() {
       const res = await fetch("/api/v1/admin/test-repo-auth", { method: "POST" });

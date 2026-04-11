@@ -241,6 +241,233 @@ img {
   flex-wrap: wrap;
 }
 
+/* Sync preview modal */
+.sync-preview-dialog {
+  max-width: 860px;
+  width: calc(100% - 2rem);
+  max-height: 85vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sync-preview-dialog[open] {
+  display: grid;
+}
+
+.sync-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.sync-preview-header h3 {
+  margin: 0;
+}
+
+.sync-preview-loading {
+  display: grid;
+  place-items: center;
+  padding: 3rem 1rem;
+  color: var(--c-text-muted);
+}
+
+.sync-preview-empty {
+  display: grid;
+  place-items: center;
+  padding: 3rem 1rem;
+  color: var(--c-text-muted);
+}
+
+.sync-preview-summary {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.8rem 1.2rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.badge-new {
+  background: color-mix(in oklab, #34c759 25%, var(--c-surface-raised) 75%);
+  color: #34c759;
+}
+
+.badge-update {
+  background: color-mix(in oklab, var(--c-accent) 25%, var(--c-surface-raised) 75%);
+  color: var(--c-accent);
+}
+
+.badge-unchanged {
+  background: var(--c-surface-raised);
+  color: var(--c-text-muted);
+}
+
+.badge-skip {
+  background: color-mix(in oklab, var(--c-warm) 25%, var(--c-surface-raised) 75%);
+  color: var(--c-warm);
+}
+
+.sync-preview-table-wrap {
+  overflow-y: auto;
+  padding: 0 0.4rem;
+}
+
+.sync-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.sync-preview-table th {
+  position: sticky;
+  top: 0;
+  background: var(--c-surface);
+  z-index: 1;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--c-text-muted);
+  padding: 0.5rem 0.65rem;
+}
+
+.sync-preview-table td {
+  padding: 0.55rem 0.65rem;
+  vertical-align: top;
+  font-size: 0.92rem;
+}
+
+.sync-preview-table td:first-child {
+  width: 2rem;
+  text-align: center;
+}
+
+.sync-row-new {
+  background: color-mix(in oklab, #34c759 5%, transparent 95%);
+}
+
+.sync-row-update {
+  background: color-mix(in oklab, var(--c-accent) 5%, transparent 95%);
+}
+
+.sync-row-skip {
+  opacity: 0.55;
+}
+
+.sync-row-unchanged {
+  opacity: 0.65;
+}
+
+.sync-action-tag {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.action-new {
+  background: color-mix(in oklab, #34c759 20%, var(--c-surface-raised) 80%);
+  color: #34c759;
+}
+
+.action-update {
+  background: color-mix(in oklab, var(--c-accent) 20%, var(--c-surface-raised) 80%);
+  color: var(--c-accent);
+}
+
+.action-unchanged {
+  background: var(--c-surface-raised);
+  color: var(--c-text-muted);
+}
+
+.action-skip {
+  background: color-mix(in oklab, var(--c-warm) 20%, var(--c-surface-raised) 80%);
+  color: var(--c-warm);
+}
+
+.sync-existing-name {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
+.sync-dsk-cell {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+  max-width: 160px;
+  color: var(--c-text-muted);
+}
+
+.sync-change-line {
+  display: flex;
+  gap: 0.35rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.sync-field-name {
+  font-weight: 600;
+  color: var(--c-text-muted);
+  text-transform: capitalize;
+}
+
+.sync-old-val {
+  color: var(--c-danger);
+  text-decoration: line-through;
+}
+
+.sync-arrow {
+  color: var(--c-text-muted);
+}
+
+.sync-new-val {
+  color: #34c759;
+}
+
+.sync-detail-line {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--c-text-muted);
+}
+
+.sync-detail-muted {
+  font-size: 0.85rem;
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
+.sync-preview-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  padding: 0.8rem 1.2rem;
+  border-top: 1px solid var(--c-border);
+}
+
+.sync-preview-actions .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 700px) {
   .menu-bar,
   .row {
@@ -250,5 +477,14 @@ img {
 
   .profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sync-preview-table th:nth-child(4),
+  .sync-preview-table td:nth-child(4) {
+    display: none;
+  }
+
+  .sync-preview-dialog {
+    max-height: 90vh;
   }
 }

@@ -1,0 +1,18 @@
+{
+  "username": "admin",
+  "password_salt": "58c2c8ab57832f0542483af9d70479fc",
+  "password_hash": "b39b6a76bf33d5ef153f1f890cf6fb33b1a1cdec31ed27e24d08a64b929bf1f7",
+  "github_repo": "https://github.com/example/repo",
+  "github_token": "ghp_test_token_123456",
+  "github_branch": "main",
+  "ha_url": null,
+  "ha_token": "token_123",
+  "ha_zwave_path": "/api/devices",
+  "ha_verify_ssl": false,
+  "ha_mode": "direct",
+  "ha_addon_slug": "zwavejs2mqtt",
+  "zwave_base_url": "http://ha.local:8092",
+  "zwave_api_token": null,
+  "request_timeout_seconds": 10,
+  "retry_count": 3
+}

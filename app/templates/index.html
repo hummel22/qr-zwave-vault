@@ -194,6 +194,91 @@
         <button class="btn" @click="stopScanner(); $refs.addModal.close()">Cancel</button>
       </dialog>
 
+      <dialog ref="syncPreviewModal" class="sync-preview-dialog">
+        <div class="sync-preview-header">
+          <h3>Home Assistant Sync Preview</h3>
+          <button class="btn" @click="$refs.syncPreviewModal.close()">Close</button>
+        </div>
+        <div v-if="syncPreviewLoading" class="sync-preview-loading">
+          <p>Fetching nodes from Home Assistant...</p>
+        </div>
+        <template v-else-if="syncPreview.length">
+          <div class="sync-preview-summary">
+            <span class="sync-badge badge-new">{{ syncPreviewCounts.new }} new</span>
+            <span class="sync-badge badge-update">{{ syncPreviewCounts.update }} updated</span>
+            <span class="sync-badge badge-unchanged">{{ syncPreviewCounts.unchanged }} unchanged</span>
+            <span v-if="syncPreviewCounts.skip" class="sync-badge badge-skip">{{ syncPreviewCounts.skip }} skipped</span>
+          </div>
+          <div class="sync-preview-table-wrap">
+            <table class="sync-preview-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Status</th>
+                  <th>Device</th>
+                  <th>DSK</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, idx) in syncPreview" :key="idx" :class="'sync-row-' + item.action">
+                  <td>
+                    <input
+                      v-if="item.action === 'new' || item.action === 'update'"
+                      type="checkbox"
+                      v-model="item.selected"
+                    />
+                  </td>
+                  <td>
+                    <span :class="'sync-action-tag action-' + item.action">{{ item.action }}</span>
+                  </td>
+                  <td>
+                    <strong>{{ item.device_name }}</strong>
+                    <span v-if="item.existing_name && item.existing_name !== item.device_name" class="sync-existing-name">was: {{ item.existing_name }}</span>
+                  </td>
+                  <td class="sync-dsk-cell">{{ item.dsk }}</td>
+                  <td>
+                    <template v-if="item.action === 'new'">
+                      <span class="sync-detail-line" v-if="item.manufacturer">{{ item.manufacturer }}</span>
+                      <span class="sync-detail-line" v-if="item.model">{{ item.model }}</span>
+                      <span class="sync-detail-line" v-if="item.location">{{ item.location }}</span>
+                    </template>
+                    <template v-else-if="item.changes && item.changes.length">
+                      <div v-for="(ch, ci) in item.changes" :key="ci" class="sync-change-line">
+                        <span class="sync-field-name">{{ ch.field }}:</span>
+                        <span v-if="ch.old" class="sync-old-val">{{ ch.old }}</span>
+                        <span v-if="ch.old" class="sync-arrow">&rarr;</span>
+                        <span class="sync-new-val">{{ ch.new }}</span>
+                      </div>
+                    </template>
+                    <template v-else-if="item.action === 'skip'">
+                      <span class="sync-detail-muted">{{ item.reason }}</span>
+                    </template>
+                    <template v-else>
+                      <span class="sync-detail-muted">No changes</span>
+                    </template>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="sync-preview-actions">
+            <button class="btn" type="button" @click="toggleAllSyncItems">{{ allSyncItemsSelected ? 'Deselect All' : 'Select All' }}</button>
+            <button
+              class="btn primary"
+              type="button"
+              @click="confirmSync"
+              :disabled="syncSelectedCount === 0 || syncImporting"
+            >
+              {{ syncImporting ? 'Importing...' : `Import ${syncSelectedCount} device${syncSelectedCount === 1 ? '' : 's'}` }}
+            </button>
+          </div>
+        </template>
+        <div v-else class="sync-preview-empty">
+          <p>No nodes found on Home Assistant.</p>
+        </div>
+      </dialog>
+
       <p v-if="message" class="message">{{ message }}</p>
     </main>
     <script src="/static/app.js"></script>

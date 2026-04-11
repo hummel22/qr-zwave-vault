@@ -228,6 +228,74 @@ def admin_test_home_assistant_config(request: Request, payload: HomeAssistantCon
     return {"ok": ok, "reason": reason, "count": count}
 
 
+@app.post("/api/v1/admin/preview-home-assistant-sync")
+def admin_preview_home_assistant_sync(request: Request) -> dict:
+    _require_auth(request)
+    settings = _current_settings_or_404()
+    config = HomeAssistantSyncConfig(
+        mode=settings.ha_mode,
+        ha_base_url=settings.ha_url,
+        ha_auth_token=settings.ha_token,
+        addon_slug=settings.ha_addon_slug,
+        zwave_base_url=settings.zwave_base_url,
+        zwave_api_token=settings.zwave_api_token,
+        request_timeout_seconds=settings.request_timeout_seconds,
+        retry_count=settings.retry_count,
+        verify_ssl=settings.ha_verify_ssl,
+        zwave_path=settings.ha_zwave_path,
+    )
+    if config.mode == "ingress" and (not config.ha_base_url or not config.ha_auth_token):
+        raise HTTPException(status_code=400, detail="missing_home_assistant_config")
+    if config.mode == "direct" and not config.zwave_base_url:
+        raise HTTPException(status_code=400, detail="missing_zwave_base_url")
+
+    candidates = ha_sync.fetch_nodes(config)
+    existing = store.list_all()
+    by_dsk = {item.dsk: item for item in existing}
+    preview: list[dict] = []
+    for candidate in candidates:
+        try:
+            normalized_dsk = normalize_dsk(candidate.dsk.replace(" ", ""))
+        except ValueError:
+            preview.append({
+                "action": "skip",
+                "node_id": candidate.node_id,
+                "device_name": candidate.device_name,
+                "dsk": candidate.dsk,
+                "reason": "invalid_dsk",
+                "changes": [],
+            })
+            continue
+        current = by_dsk.get(normalized_dsk)
+        if current:
+            changes: list[dict] = []
+            for field in ("device_name", "location", "description", "manufacturer", "model"):
+                old_val = getattr(current, field, None) or ""
+                new_val = getattr(candidate, field, None) or ""
+                if new_val and new_val != old_val:
+                    changes.append({"field": field, "old": old_val or None, "new": new_val})
+            preview.append({
+                "action": "update" if changes else "unchanged",
+                "node_id": candidate.node_id,
+                "device_name": candidate.device_name,
+                "dsk": normalized_dsk,
+                "existing_name": current.device_name,
+                "changes": changes,
+            })
+        else:
+            preview.append({
+                "action": "new",
+                "node_id": candidate.node_id,
+                "device_name": candidate.device_name,
+                "dsk": normalized_dsk,
+                "location": candidate.location,
+                "manufacturer": candidate.manufacturer,
+                "model": candidate.model,
+                "changes": [],
+            })
+    return {"ok": True, "preview": preview}
+
+
 @app.post("/api/v1/admin/sync-from-home-assistant")
 def admin_sync_from_home_assistant(request: Request) -> dict:
     _require_auth(request)

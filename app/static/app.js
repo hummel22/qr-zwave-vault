@@ -397,7 +397,17 @@ createApp({
         if (body?.ok) {
           this.setMessage(`HA config OK — found ${body?.count || 0} node${body?.count === 1 ? '' : 's'}`, "success");
         } else {
-          this.setMessage(`HA config failed: ${body?.reason || "unknown"}`, "error");
+          const reason = body?.reason || "unknown";
+          const hints = {
+            "api_transport_timeout": "Connection timed out — verify the URL and mode match (use Direct mode for Z-Wave JS Server)",
+            "ingress_discovery_failed": "Could not discover ingress — is the addon running? For Z-Wave JS Server use Direct mode",
+            "addon_not_started": "The Z-Wave JS add-on is not started in Home Assistant",
+            "missing_home_assistant_config": "Home Assistant URL and token are required for Ingress mode",
+            "missing_zwave_base_url": "Z-Wave base URL is required for Direct mode",
+            "websocket_handshake_failed": "WebSocket handshake failed — check the URL and port",
+            "connection_refused": "Connection refused — is the service running at this address?",
+          };
+          this.setMessage(hints[reason] || `HA config failed: ${reason}`, "error");
         }
       } catch (err) {
         if (err.name === "AbortError") {

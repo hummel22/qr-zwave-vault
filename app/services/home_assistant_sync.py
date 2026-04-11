@@ -157,7 +157,7 @@ class HomeAssistantSyncService:
             )
 
             # Set API schema
-            schema_ver = min(max_schema, 35)
+            schema_ver = min(max_schema, 47)
             self._ws_send(s, {"messageId": "schema", "command": "set_api_schema", "schemaVersion": schema_ver})
             schema_resp = self._ws_recv(s, timeout)
             if not schema_resp:

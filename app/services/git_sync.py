@@ -103,44 +103,29 @@ class GitSyncService:
         return result.stdout.strip() if result.returncode == 0 else "local"
 
     def _ensure_repo(self) -> bool:
-        """Ensure data directory is a git repo. Clone or init as needed."""
+        """Ensure data directory is its own git repo. Init if needed."""
         if not self._data_dir:
             return False
         ok, _ = self.can_authenticate()
         if not ok:
             return False
 
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+
         if self._is_git_repo():
             # Ensure remote is configured correctly
             self._run_git("remote", "set-url", "origin", self._auth_url(), check=False)
             return True
 
-        # Try to clone into the data dir
-        self._data_dir.mkdir(parents=True, exist_ok=True)
-        existing_files = list(self._data_dir.glob("*"))
-
-        if existing_files:
-            # Data dir has files but no git repo — init and push
-            self._run_git("init", "-b", self._status.branch)
-            self._run_git("remote", "add", "origin", self._auth_url())
-            # Try to pull remote first
-            pull_result = self._run_git("pull", "origin", self._status.branch, "--allow-unrelated-histories", check=False)
-            if pull_result.returncode != 0:
-                logger.info("No remote branch yet or pull failed, will push fresh: %s", pull_result.stderr.strip())
-            return True
-        else:
-            # Empty dir — try clone
-            clone_result = subprocess.run(
-                ["git", "clone", "-b", self._status.branch, self._auth_url(), str(self._data_dir)],
-                capture_output=True, text=True, timeout=30, check=False,
-            )
-            if clone_result.returncode == 0:
-                return True
-            # Clone failed (maybe empty repo) — init fresh
-            logger.info("Clone failed, initializing fresh repo: %s", clone_result.stderr.strip())
-            self._run_git("init", "-b", self._status.branch)
-            self._run_git("remote", "add", "origin", self._auth_url())
-            return True
+        # Not a git repo (or is a subdirectory of a parent repo) — init fresh
+        self._run_git("init", "-b", self._status.branch)
+        self._run_git("config", "user.name", "QR Z-Wave Vault")
+        self._run_git("config", "user.email", "vault@localhost")
+        # Add remote (ignore error if already exists from a previous partial init)
+        self._run_git("remote", "add", "origin", self._auth_url(), check=False)
+        self._run_git("remote", "set-url", "origin", self._auth_url(), check=False)
+        logger.info("Initialized git repo in %s", self._data_dir)
+        return True
 
     def _generate_qr_images(self) -> int:
         """Generate QR PNG images for all device JSON files that have raw_value."""
@@ -207,8 +192,14 @@ class GitSyncService:
             # Commit
             self._run_git("commit", "-m", f"vault sync {utc_iso()}")
 
-            # Push
-            self._run_git("push", "-u", "origin", self._status.branch)
+            # Push with pull-on-reject retry
+            push_result = self._run_git("push", "-u", "origin", self._status.branch, check=False)
+            if push_result.returncode != 0:
+                logger.info("Push rejected, pulling and retrying: %s", push_result.stderr.strip())
+                pull_result = self._run_git("pull", "origin", self._status.branch, "--rebase", "--no-edit", check=False)
+                if pull_result.returncode != 0:
+                    raise RuntimeError(f"git pull --rebase failed: {pull_result.stderr.strip()}")
+                self._run_git("push", "-u", "origin", self._status.branch)
 
             self._status.state = "synced"
             self._status.last_success_at = self._status.last_attempt_at

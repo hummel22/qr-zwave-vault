@@ -71,6 +71,7 @@ async def auth_guard(request: Request, call_next):
 
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/profile", response_class=HTMLResponse)
 def index() -> str:
     return Path("app/templates/index.html").read_text()
 

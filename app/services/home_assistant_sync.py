@@ -178,8 +178,9 @@ class HomeAssistantSyncService:
             for node in nodes:
                 device_config = node.get("deviceConfig") or {}
                 node_id = node.get("nodeId", 0)
-                # Build a synthetic DSK from homeId + nodeId for tracking
-                synthetic_dsk = f"{home_id:010d}-{node_id:05d}-00000-00000-00000-00000-00000-00000"
+                # Build a synthetic DSK from homeId + nodeId for tracking (8 groups of 5 digits = 40 digits)
+                home_id_truncated = home_id % 100000  # fit into 5 digits
+                synthetic_dsk = f"{home_id_truncated:05d}-{node_id:05d}-00000-00000-00000-00000-00000-00000"
                 normalized.append({
                     "nodeId": node_id,
                     "name": node.get("name") or node.get("label") or f"Node {node_id}",

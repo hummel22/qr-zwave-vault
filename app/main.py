@@ -215,8 +215,8 @@ def admin_test_home_assistant_config(request: Request, payload: HomeAssistantCon
         addon_slug=payload.ha_addon_slug if payload and payload.ha_addon_slug else settings.ha_addon_slug,
         zwave_base_url=payload.zwave_base_url if payload and payload.zwave_base_url is not None else settings.zwave_base_url,
         zwave_api_token=payload.zwave_api_token if payload and payload.zwave_api_token is not None else settings.zwave_api_token,
-        request_timeout_seconds=payload.request_timeout_seconds if payload and payload.request_timeout_seconds else settings.request_timeout_seconds,
-        retry_count=payload.retry_count if payload and payload.retry_count is not None else settings.retry_count,
+        request_timeout_seconds=min(payload.request_timeout_seconds if payload and payload.request_timeout_seconds else settings.request_timeout_seconds, 8),
+        retry_count=min(payload.retry_count if payload and payload.retry_count is not None else settings.retry_count, 1),
         verify_ssl=payload.ha_verify_ssl if payload and payload.ha_verify_ssl is not None else settings.ha_verify_ssl,
         zwave_path=payload.ha_zwave_path if payload and payload.ha_zwave_path else settings.ha_zwave_path,
     )

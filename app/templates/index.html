@@ -150,7 +150,9 @@
               <label><input v-model="admin.ha_verify_ssl" type="checkbox" /> Verify SSL certificate</label>
               <div class="row wrap-row">
                 <button class="btn primary" type="button" @click="saveSettings">Save</button>
-                <button class="btn" type="button" @click="testHomeAssistantConfig">Test HA Config</button>
+                <button class="btn" type="button" @click="testHomeAssistantConfig" :disabled="haTestLoading">
+                  {{ haTestLoading ? 'Testing...' : 'Test HA Config' }}
+                </button>
                 <button class="btn" type="button" @click="syncFromHomeAssistant">Sync from HA</button>
               </div>
             </article>
@@ -203,7 +205,10 @@
           <button class="btn" @click="$refs.syncPreviewModal.close()">Close</button>
         </div>
         <div v-if="syncPreviewLoading" class="sync-preview-loading">
+          <div class="sync-spinner"></div>
           <p>Fetching nodes from Home Assistant...</p>
+          <p class="hint">This may take a moment if the server is retrying.</p>
+          <button class="btn" type="button" @click="cancelSyncPreview">Cancel</button>
         </div>
         <template v-else-if="syncPreview && syncPreview.length">
           <div class="sync-preview-summary">

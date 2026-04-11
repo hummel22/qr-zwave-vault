@@ -47,6 +47,8 @@ createApp({
       syncPreview: [],
       syncPreviewLoading: false,
       syncImporting: false,
+      haTestLoading: false,
+      _abortController: null,
       admin: {
         username: "",
         new_password: "",
@@ -360,6 +362,9 @@ createApp({
       this.setMessage("Settings saved");
     },
     async testHomeAssistantConfig() {
+      if (this.haTestLoading) return;
+      this.haTestLoading = true;
+      this.setMessage("Testing HA connection...");
       const payload = {
         ha_url: this.admin.ha_url || null,
         ha_token: this.admin.ha_token.trim() || undefined,
@@ -372,22 +377,48 @@ createApp({
         request_timeout_seconds: this.admin.request_timeout_seconds || 10,
         retry_count: Number.isFinite(this.admin.retry_count) ? this.admin.retry_count : 3,
       };
-      const res = await fetch("/api/v1/admin/test-home-assistant-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const body = await parseJsonSafely(res);
-      if (!res.ok) return this.setMessage("Config test failed");
-      this.setMessage(body?.ok ? `Home Assistant config OK (${body?.count || 0} nodes)` : `HA config failed: ${body?.reason || "unknown"}`);
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const res = await fetch("/api/v1/admin/test-home-assistant-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        const body = await parseJsonSafely(res);
+        if (!res.ok) return this.setMessage("Config test failed");
+        this.setMessage(body?.ok ? `HA config OK — found ${body?.count || 0} node${body?.count === 1 ? '' : 's'}` : `HA config failed: ${body?.reason || "unknown"}`);
+      } catch (err) {
+        if (err.name === "AbortError") {
+          this.setMessage("HA config test timed out — check URL and network");
+        } else {
+          this.setMessage("HA config test failed — could not reach server");
+        }
+      } finally {
+        this.haTestLoading = false;
+      }
+    },
+    cancelSyncPreview() {
+      if (this._abortController) {
+        this._abortController.abort();
+        this._abortController = null;
+      }
+      this.syncPreviewLoading = false;
+      this.$refs.syncPreviewModal.close();
     },
     async syncFromHomeAssistant() {
       this.syncPreview = [];
       this.syncPreviewLoading = true;
       this.syncImporting = false;
+      this._abortController = new AbortController();
       this.$refs.syncPreviewModal.showModal();
       try {
-        const res = await fetch("/api/v1/admin/preview-home-assistant-sync", { method: "POST" });
+        const res = await fetch("/api/v1/admin/preview-home-assistant-sync", {
+          method: "POST",
+          signal: this._abortController.signal,
+        });
         const body = await parseJsonSafely(res);
         if (!res.ok) {
           this.$refs.syncPreviewModal.close();
@@ -397,11 +428,16 @@ createApp({
           ...item,
           selected: item.action === "new" || item.action === "update",
         }));
-      } catch {
+      } catch (err) {
         this.$refs.syncPreviewModal.close();
-        this.setMessage("Failed to connect to Home Assistant");
+        if (err.name === "AbortError") {
+          this.setMessage("Sync preview cancelled");
+        } else {
+          this.setMessage("Failed to connect to Home Assistant");
+        }
       } finally {
         this.syncPreviewLoading = false;
+        this._abortController = null;
       }
     },
     toggleAllSyncItems() {

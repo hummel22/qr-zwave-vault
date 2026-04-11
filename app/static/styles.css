@@ -282,8 +282,22 @@ img {
 .sync-preview-loading {
   display: grid;
   place-items: center;
+  gap: 0.8rem;
   padding: 3rem 1rem;
   color: var(--c-text-muted);
+}
+
+.sync-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--c-border);
+  border-top-color: var(--c-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .sync-preview-empty {

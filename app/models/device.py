@@ -22,13 +22,14 @@ ID_PATTERN = re.compile(r"^dev-[a-f0-9]{20}$")
 class DeviceRecord(BaseModel):
     """Canonical persisted device record."""
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
     schema_version: str = Field(default=SCHEMA_VERSION)
     id: str = Field(min_length=4, max_length=64)
     device_name: str = Field(min_length=1, max_length=120)
     raw_value: str = Field(min_length=1)
-    dsk: str = Field(min_length=1)
+    dsk: str | None = Field(default=None)
+    zwave_node_id: str | None = Field(default=None, max_length=20)
 
     location: str | None = Field(default=None, max_length=120)
     description: str | None = Field(default=None, max_length=500)
@@ -52,11 +53,11 @@ class DeviceRecord(BaseModel):
             raise ValueError("id must match pattern '^dev-[a-f0-9]{20}$'")
         return value
 
-    @field_validator("raw_value", "dsk")
+    @field_validator("raw_value")
     @classmethod
-    def validate_non_blank_identity_field(cls, value: str, info: Any) -> str:
+    def validate_non_blank_raw_value(cls, value: str) -> str:
         if not value or not value.strip():
-            raise ValueError(f"{info.field_name} must not be blank")
+            raise ValueError("raw_value must not be blank")
         return value
 
 
@@ -80,6 +81,7 @@ class DeviceRecordUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     device_name: str | None = Field(default=None, min_length=1, max_length=120)
+    dsk: str | None = Field(default=None)
     location: str | None = Field(default=None, max_length=120)
     description: str | None = Field(default=None, max_length=500)
     manufacturer: str | None = Field(default=None, max_length=120)
@@ -107,14 +109,15 @@ def normalize_dsk(value: str) -> str:
     return "-".join(digits[i : i + 5] for i in range(0, 40, 5))
 
 
-def generate_device_id(raw_value: str, dsk: str) -> str:
-    source = f"{raw_value.strip()}::{normalize_dsk(dsk)}"
+def generate_device_id(raw_value: str, dsk: str | None) -> str:
+    dsk_part = normalize_dsk(dsk) if dsk else "no-dsk"
+    source = f"{raw_value.strip()}::{dsk_part}"
     digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
     return f"dev-{digest[:20]}"
 
 
-def build_device_record(payload: DeviceCreate, derived_dsk: str) -> DeviceRecord:
-    normalized_dsk = normalize_dsk(derived_dsk)
+def build_device_record(payload: DeviceCreate, derived_dsk: str | None, zwave_node_id: str | None = None) -> DeviceRecord:
+    normalized_dsk = normalize_dsk(derived_dsk) if derived_dsk else None
     created = now_utc()
     return DeviceRecord(
         schema_version=SCHEMA_VERSION,
@@ -122,6 +125,7 @@ def build_device_record(payload: DeviceCreate, derived_dsk: str) -> DeviceRecord
         device_name=payload.device_name,
         raw_value=payload.raw_value,
         dsk=normalized_dsk,
+        zwave_node_id=zwave_node_id,
         location=payload.location,
         description=payload.description,
         manufacturer=payload.manufacturer,
@@ -140,17 +144,5 @@ def validate_uniqueness_or_raise(
         raise ValueError("id must be unique; value already exists")
     if record.raw_value in indexes.raw_values:
         raise ValueError("raw_value must be unique; value already exists")
-    if record.dsk in indexes.dsks:
+    if record.dsk and record.dsk in indexes.dsks:
         raise ValueError("dsk must be unique; value already exists")
-
-
-def validate_identity_immutability_or_raise(
-    current: DeviceRecord,
-    candidate: DeviceRecord,
-) -> None:
-    if current.id != candidate.id:
-        raise ValueError("id is immutable and cannot be changed")
-    if current.raw_value != candidate.raw_value:
-        raise ValueError("raw_value is immutable and cannot be changed")
-    if current.dsk != candidate.dsk:
-        raise ValueError("dsk is immutable and cannot be changed")

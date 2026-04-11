@@ -53,6 +53,7 @@
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Node</th>
                 <th>DSK</th>
                 <th>Location</th>
                 <th>Updated</th>
@@ -61,7 +62,8 @@
             <tbody>
               <tr v-for="item in devices" :key="item.id" @click="openDevice(item)">
                 <td>{{ item.device_name }}</td>
-                <td>{{ item.dsk }}</td>
+                <td>{{ item.zwave_node_id || '—' }}</td>
+                <td :class="{ 'dsk-missing': !item.dsk }">{{ item.dsk || 'Not set' }}</td>
                 <td>{{ item.location || '—' }}</td>
                 <td>{{ item.updated_at || '—' }}</td>
               </tr>
@@ -186,10 +188,19 @@
 
       <dialog ref="deviceModal">
         <h3>{{ selectedDevice?.device_name }}</h3>
+        <div v-if="selectedDevice" class="device-meta">
+          <span v-if="selectedDevice.zwave_node_id" class="meta-tag">Node {{ selectedDevice.zwave_node_id }}</span>
+          <span v-if="selectedDevice.manufacturer" class="meta-tag">{{ selectedDevice.manufacturer }}</span>
+          <span v-if="selectedDevice.model" class="meta-tag">{{ selectedDevice.model }}</span>
+        </div>
         <p>{{ selectedDevice?.description || 'No description' }}</p>
-        <img v-if="selectedDevice" :src="`/api/v1/devices/${selectedDevice.id}/qr.png`" alt="Device QR" />
+        <img v-if="selectedDevice && selectedDevice.dsk" :src="`/api/v1/devices/${selectedDevice.id}/qr.png`" alt="Device QR" />
         <form v-if="selectedDevice" class="stack" @submit.prevent="saveDeviceEdits">
           <input v-model="editForm.device_name" placeholder="Device name" required />
+          <label class="stack field-label">
+            DSK
+            <input v-model="editForm.dsk" placeholder="Not set — scan QR code to add" />
+          </label>
           <input v-model="editForm.location" placeholder="Location" />
           <textarea v-model="editForm.description" placeholder="Description"></textarea>
           <div class="row">

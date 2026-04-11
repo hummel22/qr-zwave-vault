@@ -243,6 +243,28 @@ img {
   color: var(--c-text-muted);
 }
 
+.dsk-missing {
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
+.device-meta {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.3rem 0;
+}
+
+.meta-tag {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: var(--c-surface-raised);
+  color: var(--c-text-muted);
+  border: 1px solid var(--c-border);
+}
+
 .profile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

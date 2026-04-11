@@ -252,22 +252,18 @@ def admin_preview_home_assistant_sync(request: Request) -> dict:
 
     candidates = ha_sync.fetch_nodes(config)
     existing = store.list_all()
-    by_dsk = {item.dsk: item for item in existing}
+    by_dsk = {item.dsk: item for item in existing if item.dsk}
+    by_node_id = {item.zwave_node_id: item for item in existing if item.zwave_node_id}
     preview: list[dict] = []
     for candidate in candidates:
         try:
-            normalized_dsk = normalize_dsk(candidate.dsk.replace(" ", ""))
+            normalized_dsk = normalize_dsk(candidate.dsk.replace(" ", "")) if candidate.dsk else None
         except ValueError:
-            preview.append({
-                "action": "skip",
-                "node_id": candidate.node_id,
-                "device_name": candidate.device_name,
-                "dsk": candidate.dsk,
-                "reason": "invalid_dsk",
-                "changes": [],
-            })
-            continue
-        current = by_dsk.get(normalized_dsk)
+            normalized_dsk = None
+        # Match by DSK first, then by zwave_node_id
+        current = by_dsk.get(normalized_dsk) if normalized_dsk else None
+        if not current:
+            current = by_node_id.get(candidate.node_id)
         if current:
             changes: list[dict] = []
             for field in ("device_name", "location", "description", "manufacturer", "model"):
@@ -301,9 +297,9 @@ def admin_preview_home_assistant_sync(request: Request) -> dict:
 def admin_sync_from_home_assistant(request: Request, body: dict | None = None) -> dict:
     _require_auth(request)
     settings = _current_settings_or_404()
-    selected_dsks: set[str] | None = None
-    if body and isinstance(body.get("dsks"), list):
-        selected_dsks = {str(d) for d in body["dsks"] if d}
+    selected_node_ids: set[str] | None = None
+    if body and isinstance(body.get("node_ids"), list):
+        selected_node_ids = {str(n) for n in body["node_ids"] if n}
     config = HomeAssistantSyncConfig(
         mode=settings.ha_mode,
         ha_base_url=settings.ha_url,
@@ -323,28 +319,32 @@ def admin_sync_from_home_assistant(request: Request, body: dict | None = None) -
 
     candidates = ha_sync.fetch_nodes(config)
     existing = store.list_all()
-    by_dsk = {item.dsk: item for item in existing}
+    by_dsk = {item.dsk: item for item in existing if item.dsk}
+    by_node_id = {item.zwave_node_id: item for item in existing if item.zwave_node_id}
     created = 0
     updated = 0
     skipped = 0
     errors: list[dict] = []
     for candidate in candidates:
         try:
-            normalized_dsk = normalize_dsk(candidate.dsk.replace(" ", ""))
-            if selected_dsks is not None and normalized_dsk not in selected_dsks:
+            if selected_node_ids is not None and candidate.node_id not in selected_node_ids:
                 skipped += 1
                 continue
-            current = by_dsk.get(normalized_dsk)
+            try:
+                normalized_dsk = normalize_dsk(candidate.dsk.replace(" ", "")) if candidate.dsk else None
+            except ValueError:
+                normalized_dsk = None
+            current = by_dsk.get(normalized_dsk) if normalized_dsk else None
+            if not current:
+                current = by_node_id.get(candidate.node_id)
             if current:
                 merged = merge_candidate(current, candidate)
                 store.update(merged)
-                by_dsk[normalized_dsk] = merged
                 updated += 1
             else:
                 record = build_record_from_candidate(candidate)
                 validate_uniqueness_or_raise(record, store.uniqueness_indexes())
                 store.create(record)
-                by_dsk[record.dsk] = record
                 created += 1
         except ValueError as exc:
             skipped += 1
@@ -418,12 +418,19 @@ def update_device(device_id: str, payload: DeviceRecordUpdate) -> DeviceRecord:
     if not current:
         raise HTTPException(status_code=404, detail="not_found")
 
-    updated = current.model_copy(
-        update={
-            **payload.model_dump(exclude_unset=True),
-            "updated_at": now_utc(),
-        }
-    )
+    update_data = payload.model_dump(exclude_unset=True)
+    # Normalize DSK if provided and non-empty, allow clearing to None
+    if "dsk" in update_data:
+        raw_dsk = update_data["dsk"]
+        if raw_dsk and raw_dsk.strip():
+            try:
+                update_data["dsk"] = normalize_dsk(raw_dsk)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        else:
+            update_data["dsk"] = None
+    update_data["updated_at"] = now_utc()
+    updated = current.model_copy(update=update_data)
     store.update(updated)
     sync.mark_write()
     return updated

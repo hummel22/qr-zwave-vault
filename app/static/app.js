@@ -308,6 +308,7 @@ createApp({
       this.selectedDevice = item;
       this.editForm = {
         device_name: item.device_name,
+        dsk: item.dsk || "",
         location: item.location || "",
         description: item.description || "",
       };
@@ -466,16 +467,16 @@ createApp({
     },
     async confirmSync() {
       this.syncImporting = true;
-      const selectedDsks = (this.syncPreview || [])
+      const selectedNodeIds = (this.syncPreview || [])
         .filter((i) => i.selected)
-        .map((i) => i.dsk);
+        .map((i) => i.node_id);
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 60000);
         const res = await fetch("/api/v1/admin/sync-from-home-assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dsks: selectedDsks }),
+          body: JSON.stringify({ node_ids: selectedNodeIds }),
           signal: controller.signal,
         });
         clearTimeout(timeout);

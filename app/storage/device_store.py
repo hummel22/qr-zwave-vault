@@ -26,7 +26,7 @@ class DeviceStore:
         return DeviceUniquenessIndexes(
             ids={item.id for item in items},
             raw_values={item.raw_value for item in items},
-            dsks={item.dsk for item in items},
+            dsks={item.dsk for item in items if item.dsk},
         )
 
     def create(self, record: DeviceRecord) -> DeviceRecord:
@@ -72,12 +72,13 @@ class DeviceStore:
                 if contains(i.device_name, q)
                 or contains(i.dsk, q.replace("-", ""))
                 or contains(i.description, q)
+                or contains(i.zwave_node_id, q)
             ]
         if name:
             items = [i for i in items if contains(i.device_name, name)]
         if dsk:
             ndsk = dsk.replace("-", "")
-            items = [i for i in items if ndsk in i.dsk.replace("-", "")]
+            items = [i for i in items if i.dsk and ndsk in i.dsk.replace("-", "")]
         if notes:
             items = [i for i in items if contains(i.description, notes)]
 
@@ -85,7 +86,7 @@ class DeviceStore:
             "updated_at": lambda i: i.updated_at,
             "created_at": lambda i: i.created_at,
             "device_name": lambda i: i.device_name.lower(),
-            "dsk": lambda i: i.dsk,
+            "dsk": lambda i: i.dsk or "",
             "sync_state": lambda i: "synced",
         }
         items = sorted(items, key=sort_map[sort], reverse=order == "desc")

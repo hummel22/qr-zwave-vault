@@ -178,9 +178,6 @@ class HomeAssistantSyncService:
             for node in nodes:
                 device_config = node.get("deviceConfig") or {}
                 node_id = node.get("nodeId", 0)
-                # Build a synthetic DSK from homeId + nodeId for tracking (8 groups of 5 digits = 40 digits)
-                home_id_truncated = home_id % 100000  # fit into 5 digits
-                synthetic_dsk = f"{home_id_truncated:05d}-{node_id:05d}-00000-00000-00000-00000-00000-00000"
                 normalized.append({
                     "nodeId": node_id,
                     "name": node.get("name") or node.get("label") or f"Node {node_id}",
@@ -188,7 +185,7 @@ class HomeAssistantSyncService:
                     "manufacturer": device_config.get("manufacturer") or "",
                     "productLabel": device_config.get("label") or node.get("label") or "",
                     "description": device_config.get("description") or "",
-                    "dsk": node.get("dsk") or synthetic_dsk,
+                    "dsk": node.get("dsk") or None,
                     "status": node.get("status"),
                     "firmwareVersion": node.get("firmwareVersion"),
                     "isControllerNode": node.get("isControllerNode", False),
@@ -213,9 +210,7 @@ class HomeAssistantSyncService:
     def _to_candidates(self, mode: str, raw_nodes: list[dict[str, Any]]) -> list[HomeAssistantNodeCandidate]:
         candidates: list[HomeAssistantNodeCandidate] = []
         for node in raw_nodes:
-            dsk = str(node.get("dsk") or node.get("securityCode") or "").strip()
-            if not dsk:
-                continue
+            dsk = str(node.get("dsk") or node.get("securityCode") or "").strip() or None
             node_id = str(node.get("id") or node.get("nodeId") or "unknown")
             name = str(node.get("name") or node.get("device") or f"Node {node_id}").strip()
             location = str(node.get("loc") or node.get("location") or "").strip() or None
@@ -339,8 +334,13 @@ class HomeAssistantSyncService:
 
 
 def build_record_from_candidate(candidate: HomeAssistantNodeCandidate) -> DeviceRecord:
-    normalized_dsk = normalize_dsk(candidate.dsk)
-    synthetic_raw = f"ha://zwave-ui/node/{candidate.node_id}/dsk/{normalized_dsk.replace('-', '')}"
+    # Use real DSK if available, otherwise None
+    try:
+        normalized_dsk = normalize_dsk(candidate.dsk) if candidate.dsk else None
+    except ValueError:
+        normalized_dsk = None
+    dsk_part = normalized_dsk.replace('-', '') if normalized_dsk else 'nodsk'
+    synthetic_raw = f"ha://zwave-ui/node/{candidate.node_id}/dsk/{dsk_part}"
     payload = DeviceCreate(
         raw_value=synthetic_raw,
         device_name=candidate.device_name,
@@ -350,7 +350,7 @@ def build_record_from_candidate(candidate: HomeAssistantNodeCandidate) -> Device
         model=candidate.model,
         metadata=candidate.metadata,
     )
-    return build_device_record(payload, normalized_dsk)
+    return build_device_record(payload, normalized_dsk, zwave_node_id=candidate.node_id)
 
 
 def merge_candidate(existing: DeviceRecord, candidate: HomeAssistantNodeCandidate) -> DeviceRecord:
@@ -359,6 +359,7 @@ def merge_candidate(existing: DeviceRecord, candidate: HomeAssistantNodeCandidat
     return existing.model_copy(
         update={
             "device_name": candidate.device_name or existing.device_name,
+            "zwave_node_id": candidate.node_id or existing.zwave_node_id,
             "location": candidate.location or existing.location,
             "description": candidate.description or existing.description,
             "manufacturer": candidate.manufacturer or existing.manufacturer,

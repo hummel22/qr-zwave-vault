@@ -24,7 +24,7 @@ DATA_DIR = Path(os.getenv("DATA_DIR", "./data/repo/devices"))
 SETTINGS_FILE = Path(os.getenv("SETTINGS_FILE", "./data/settings/settings.json"))
 store = DeviceStore(DATA_DIR)
 settings_store = SettingsStore(SETTINGS_FILE)
-sync = GitSyncService()
+sync = GitSyncService(data_dir=DATA_DIR)
 ha_sync = HomeAssistantSyncService()
 app = FastAPI(title="QR Z-Wave Vault", version=APP_VERSION)
 app.add_middleware(
@@ -201,7 +201,7 @@ def admin_force_pull_update(request: Request) -> dict:
     _require_auth(request)
     settings = _current_settings_or_404()
     sync.configure(settings.github_repo, settings.github_token, settings.github_branch)
-    result = sync.trigger_sync()
+    result = sync.force_pull()
     return {"ok": result.get("state") == "synced", "sync": result}
 
 

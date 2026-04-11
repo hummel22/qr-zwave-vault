@@ -55,6 +55,10 @@ body {
   margin-bottom: 1rem;
 }
 
+.app-title {
+  cursor: pointer;
+}
+
 .panel {
   background: var(--c-surface);
   border: 1px solid var(--c-border);

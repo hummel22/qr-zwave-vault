@@ -13,10 +13,11 @@
       <header class="menu-bar">
         <div class="menu-left">
           <button class="icon-btn" @click="toggleTheme" title="Toggle theme">🌓</button>
-          <h1>QR Z-Wave Vault</h1>
+          <h1 class="app-title" @click="goToDevices">QR Z-Wave Vault</h1>
         </div>
         <div class="menu-right">
-          <button class="icon-btn" @click="openProfile" title="Profile">👤</button>
+          <button v-if="isAuthenticated && route === 'profile'" class="icon-btn" @click="goToDevices" title="Back to Devices">←</button>
+          <button v-if="isAuthenticated && route !== 'profile'" class="icon-btn" @click="openProfile" title="Profile">👤</button>
         </div>
       </header>
 
@@ -108,36 +109,55 @@
                   <option value="direct">Direct Z-Wave JS UI</option>
                 </select>
               </label>
-              <input v-model="admin.ha_addon_slug" placeholder="Addon slug (default: zwavejs2mqtt)" />
-              <label class="stack field-label">
-                Home Assistant URL
-                <span class="help-row">
-                  <input v-model="admin.ha_url" placeholder="https://homeassistant.local:8123" />
-                  <button
-                    class="help-btn"
-                    type="button"
-                    title="Ingress mode uses this Home Assistant base URL. The service discovers the ingress route for the zwavejs2mqtt add-on and calls /api/nodes through Home Assistant."
-                  >
-                    ?
-                  </button>
-                </span>
-              </label>
-              <label class="stack field-label">
-                Long-lived Access Token
-                <span class="help-row">
-                  <input v-model="admin.ha_token" :placeholder="admin.ha_token_masked ? `Stored token: ${admin.ha_token_masked}` : 'Paste token'" />
-                  <button
-                    class="help-btn"
-                    type="button"
-                    title="In Home Assistant: click your profile (bottom-left) → Long-Lived Access Tokens → Create Token."
-                  >
-                    ?
-                  </button>
-                </span>
-              </label>
-              <p class="hint">{{ admin.ha_token ? 'A new Home Assistant token will replace the stored token when you save.' : (admin.ha_token_masked ? `Using saved token ${admin.ha_token_masked}` : 'No Home Assistant token saved yet.') }}</p>
-              <input v-model="admin.zwave_base_url" placeholder="Direct mode base URL (e.g. http://zwavejsui-host:8091)" />
-              <input v-model="admin.zwave_api_token" :placeholder="admin.zwave_api_token_masked ? `Stored token: ${admin.zwave_api_token_masked}` : 'Direct mode API token (optional)'" />
+
+              <template v-if="admin.ha_mode === 'ingress'">
+                <input v-model="admin.ha_addon_slug" placeholder="Addon slug (default: zwavejs2mqtt)" />
+                <label class="stack field-label">
+                  Home Assistant URL
+                  <span class="help-row">
+                    <input v-model="admin.ha_url" placeholder="https://homeassistant.local:8123" />
+                    <button
+                      class="help-btn"
+                      type="button"
+                      title="Ingress mode uses this Home Assistant base URL. The service discovers the ingress route for the zwavejs2mqtt add-on and calls /api/nodes through Home Assistant."
+                    >
+                      ?
+                    </button>
+                  </span>
+                </label>
+                <label class="stack field-label">
+                  Long-lived Access Token
+                  <span class="help-row">
+                    <input v-model="admin.ha_token" :placeholder="admin.ha_token_masked ? `Stored token: ${admin.ha_token_masked}` : 'Paste token'" />
+                    <button
+                      class="help-btn"
+                      type="button"
+                      title="In Home Assistant: click your profile (bottom-left) → Long-Lived Access Tokens → Create Token."
+                    >
+                      ?
+                    </button>
+                  </span>
+                </label>
+                <p class="hint">{{ admin.ha_token ? 'A new token will replace the stored token when you save.' : (admin.ha_token_masked ? `Using saved token ${admin.ha_token_masked}` : 'No token saved yet.') }}</p>
+              </template>
+
+              <template v-if="admin.ha_mode === 'direct'">
+                <label class="stack field-label">
+                  Z-Wave JS Server URL
+                  <span class="help-row">
+                    <input v-model="admin.zwave_base_url" placeholder="http://zwavejsui-host:3000" />
+                    <button
+                      class="help-btn"
+                      type="button"
+                      title="The WebSocket URL of your Z-Wave JS Server (typically port 3000). Connects directly without Home Assistant."
+                    >
+                      ?
+                    </button>
+                  </span>
+                </label>
+                <input v-model="admin.zwave_api_token" :placeholder="admin.zwave_api_token_masked ? `Stored token: ${admin.zwave_api_token_masked}` : 'API token (optional)'" />
+              </template>
+
               <input v-model="admin.ha_zwave_path" placeholder="Z-Wave nodes API path (e.g. /api/nodes)" />
               <label class="stack field-label">
                 Request timeout seconds
@@ -151,7 +171,7 @@
               <div class="row wrap-row">
                 <button class="btn primary" type="button" @click="saveSettings">Save</button>
                 <button class="btn" type="button" @click="testHomeAssistantConfig" :disabled="haTestLoading">
-                  {{ haTestLoading ? 'Testing...' : 'Test HA Config' }}
+                  {{ haTestLoading ? 'Testing...' : 'Test Connection' }}
                 </button>
                 <button class="btn" type="button" @click="syncFromHomeAssistant">Sync from HA</button>
               </div>

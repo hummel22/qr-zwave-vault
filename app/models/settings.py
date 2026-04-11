@@ -99,7 +99,7 @@ class StoredSettings:
     retry_count: int = 3
 
     def masked(self) -> dict:
-        token = self.github_token
+        token = self.github_token or ""
         if len(token) <= 8:
             masked_token = "*" * len(token)
         else:

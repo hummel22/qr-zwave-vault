@@ -79,17 +79,17 @@ createApp({
       return !!(window.BarcodeDetector && navigator.mediaDevices?.getUserMedia);
     },
     syncPreviewCounts() {
-      const counts = { new: 0, update: 0, unchanged: 0, skip: 0 };
-      for (const item of this.syncPreview) {
+      const counts = { "new": 0, update: 0, unchanged: 0, skip: 0 };
+      for (const item of this.syncPreview || []) {
         if (item.action in counts) counts[item.action]++;
       }
       return counts;
     },
     syncSelectedCount() {
-      return this.syncPreview.filter((i) => i.selected).length;
+      return (this.syncPreview || []).filter((i) => i.selected).length;
     },
     allSyncItemsSelected() {
-      const selectable = this.syncPreview.filter((i) => i.action === "new" || i.action === "update");
+      const selectable = (this.syncPreview || []).filter((i) => i.action === "new" || i.action === "update");
       return selectable.length > 0 && selectable.every((i) => i.selected);
     },
   },
@@ -405,7 +405,7 @@ createApp({
       }
     },
     toggleAllSyncItems() {
-      const selectable = this.syncPreview.filter((i) => i.action === "new" || i.action === "update");
+      const selectable = (this.syncPreview || []).filter((i) => i.action === "new" || i.action === "update");
       const allSelected = selectable.every((i) => i.selected);
       selectable.forEach((i) => (i.selected = !allSelected));
     },

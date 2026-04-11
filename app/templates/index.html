@@ -205,7 +205,7 @@
         <div v-if="syncPreviewLoading" class="sync-preview-loading">
           <p>Fetching nodes from Home Assistant...</p>
         </div>
-        <template v-else-if="syncPreview.length">
+        <template v-else-if="syncPreview && syncPreview.length">
           <div class="sync-preview-summary">
             <span class="sync-badge badge-new">{{ syncPreviewCounts.new }} new</span>
             <span class="sync-badge badge-update">{{ syncPreviewCounts.update }} updated</span>

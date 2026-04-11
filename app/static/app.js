@@ -30,6 +30,7 @@ createApp({
       setupRequired: false,
       isAuthenticated: false,
       appVersion: "",
+      gitSync: null,
       message: "",
       messageType: "",
       route: "devices",
@@ -181,6 +182,7 @@ createApp({
         retry_count: settings.retry_count ?? 3,
       };
       await this.loadDevices();
+      await this.loadSyncStatus();
     },
     async completeSetup() {
       const res = await fetch("/api/v1/setup/bootstrap", {
@@ -487,6 +489,7 @@ createApp({
         }
         const results = body?.results || {};
         await this.loadDevices();
+        await this.loadSyncStatus();
         this.$refs.syncPreviewModal.close();
         this.setMessage(`HA sync complete: +${results.created || 0} new, ${results.updated || 0} updated, ${results.skipped || 0} skipped`, "success");
       } catch (err) {
@@ -514,7 +517,14 @@ createApp({
       const body = await parseJsonSafely(res);
       if (!res.ok) return this.setMessage("Failed to delete devices", "error");
       await this.loadDevices();
+      await this.loadSyncStatus();
       this.setMessage(`Deleted ${body?.deleted || 0} devices`, "success");
+    },
+    async loadSyncStatus() {
+      try {
+        const res = await fetch("/api/v1/sync/status");
+        if (res.ok) this.gitSync = await parseJsonSafely(res);
+      } catch { /* ignore */ }
     },
     async testRepoAuth() {
       const res = await fetch("/api/v1/admin/test-repo-auth", { method: "POST" });

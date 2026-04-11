@@ -75,6 +75,27 @@
           </table>
         </section>
 
+        <section v-if="gitSync" class="panel sync-status-panel">
+          <div class="row sync-status-header">
+            <h3>Git Sync</h3>
+            <span class="sync-state-badge" :class="'sync-state-' + (gitSync.state || 'unknown')">{{ gitSync.state || 'unknown' }}</span>
+          </div>
+          <div class="sync-status-details">
+            <span v-if="gitSync.head_commit && gitSync.head_commit !== 'local'" class="sync-detail">
+              Commit: <code>{{ gitSync.head_commit }}</code>
+            </span>
+            <span v-if="gitSync.branch" class="sync-detail">
+              Branch: <code>{{ gitSync.branch }}</code>
+            </span>
+            <span v-if="gitSync.last_success_at" class="sync-detail">
+              Last sync: {{ gitSync.last_success_at }}
+            </span>
+            <span v-if="gitSync.last_error" class="sync-detail sync-error">
+              Error: {{ gitSync.last_error }}
+            </span>
+          </div>
+        </section>
+
         <button class="fab" @click="openAddModal">＋</button>
       </template>
 

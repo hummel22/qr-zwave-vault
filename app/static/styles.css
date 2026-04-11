@@ -247,6 +247,70 @@ img {
   color: var(--c-text-muted);
 }
 
+.sync-status-panel {
+  margin-top: 0.8rem;
+  padding: 0.7rem 1rem;
+}
+
+.sync-status-header {
+  justify-content: space-between;
+}
+
+.sync-status-header h3 {
+  font-size: 0.9rem;
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sync-state-badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sync-state-synced {
+  background: color-mix(in oklab, var(--c-success) 20%, var(--c-surface-raised) 80%);
+  color: var(--c-success);
+}
+
+.sync-state-error {
+  background: color-mix(in oklab, var(--c-danger) 20%, var(--c-surface-raised) 80%);
+  color: var(--c-danger);
+}
+
+.sync-state-unknown {
+  background: var(--c-surface-raised);
+  color: var(--c-text-muted);
+}
+
+.sync-status-details {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
+.sync-detail {
+  font-size: 0.85rem;
+  color: var(--c-text-muted);
+}
+
+.sync-detail code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  background: var(--c-surface-raised);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.sync-error {
+  color: var(--c-danger);
+}
+
 .dsk-missing {
   color: var(--c-text-muted);
   font-style: italic;

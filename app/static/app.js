@@ -49,6 +49,7 @@ createApp({
       syncPreviewLoading: false,
       syncImporting: false,
       haTestLoading: false,
+      wipeConfirmPending: false,
       _abortController: null,
       admin: {
         username: "",
@@ -498,8 +499,17 @@ createApp({
         this.syncImporting = false;
       }
     },
-    async wipeAllDevices() {
-      if (!confirm("Delete ALL devices? This cannot be undone.")) return;
+    wipeAllDevices() {
+      if (!this.wipeConfirmPending) {
+        this.wipeConfirmPending = true;
+        this.setMessage("Click Wipe All again to confirm deletion of ALL devices");
+        setTimeout(() => { this.wipeConfirmPending = false; }, 4000);
+        return;
+      }
+      this.wipeConfirmPending = false;
+      this.doWipeAllDevices();
+    },
+    async doWipeAllDevices() {
       const res = await fetch("/api/v1/devices", { method: "DELETE" });
       const body = await parseJsonSafely(res);
       if (!res.ok) return this.setMessage("Failed to delete devices", "error");

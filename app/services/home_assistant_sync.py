@@ -173,11 +173,32 @@ class HomeAssistantSyncService:
             home_id = state.get("controller", {}).get("homeId") or version_msg.get("homeId") or 0
             nodes = state.get("nodes", [])
 
+            # Fetch provisioning entries (SmartStart) to get real DSKs
+            prov_by_node: dict[int, str] = {}
+            try:
+                self._ws_send(s, {"messageId": "prov", "command": "controller.get_provisioning_entries"})
+                prov_raw = self._ws_recv(s, timeout)
+                if prov_raw:
+                    prov_msg = json.loads(prov_raw)
+                    prov_result = prov_msg.get("result", [])
+                    entries = prov_result.get("entries", []) if isinstance(prov_result, dict) else prov_result
+                    if isinstance(entries, list):
+                        for entry in entries:
+                            nid = entry.get("nodeId")
+                            edsk = entry.get("dsk")
+                            if nid and edsk:
+                                prov_by_node[int(nid)] = str(edsk)
+                        logger.info("Fetched %d provisioning entries with DSKs", len(prov_by_node))
+            except Exception as exc:
+                logger.warning("Failed to fetch provisioning entries: %s", exc)
+
             # Normalize node data to match the format expected by _to_candidates
             normalized: list[dict[str, Any]] = []
             for node in nodes:
                 device_config = node.get("deviceConfig") or {}
                 node_id = node.get("nodeId", 0)
+                # DSK priority: node state (schema 47+) > provisioning entry > None
+                dsk = node.get("dsk") or prov_by_node.get(node_id) or None
                 normalized.append({
                     "nodeId": node_id,
                     "name": node.get("name") or node.get("label") or f"Node {node_id}",
@@ -185,13 +206,13 @@ class HomeAssistantSyncService:
                     "manufacturer": device_config.get("manufacturer") or "",
                     "productLabel": device_config.get("label") or node.get("label") or "",
                     "description": device_config.get("description") or "",
-                    "dsk": node.get("dsk") or None,
+                    "dsk": dsk,
                     "status": node.get("status"),
                     "firmwareVersion": node.get("firmwareVersion"),
                     "isControllerNode": node.get("isControllerNode", False),
                     "_source_node": node,
                 })
-            logger.info("Fetched %d nodes via WebSocket (homeId=%s)", len(normalized), home_id)
+            logger.info("Fetched %d nodes via WebSocket (homeId=%s, %d with DSKs)", len(normalized), home_id, sum(1 for n in normalized if n.get("dsk")))
             return normalized
         finally:
             s.close()

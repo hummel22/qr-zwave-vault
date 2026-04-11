@@ -436,6 +436,19 @@ def update_device(device_id: str, payload: DeviceRecordUpdate) -> DeviceRecord:
     return updated
 
 
+@app.delete("/api/v1/devices", status_code=200)
+def delete_all_devices(request: Request) -> dict:
+    _require_auth(request)
+    all_devices = store.list_all()
+    count = 0
+    for device in all_devices:
+        store.delete(device.id)
+        count += 1
+    if count:
+        sync.mark_write()
+    return {"ok": True, "deleted": count}
+
+
 @app.delete("/api/v1/devices/{device_id}", status_code=204)
 def delete_device(device_id: str) -> Response:
     if not store.delete(device_id):

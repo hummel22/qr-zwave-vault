@@ -498,6 +498,14 @@ createApp({
         this.syncImporting = false;
       }
     },
+    async wipeAllDevices() {
+      if (!confirm("Delete ALL devices? This cannot be undone.")) return;
+      const res = await fetch("/api/v1/devices", { method: "DELETE" });
+      const body = await parseJsonSafely(res);
+      if (!res.ok) return this.setMessage("Failed to delete devices", "error");
+      await this.loadDevices();
+      this.setMessage(`Deleted ${body?.deleted || 0} devices`, "success");
+    },
     async testRepoAuth() {
       const res = await fetch("/api/v1/admin/test-repo-auth", { method: "POST" });
       const body = await parseJsonSafely(res);

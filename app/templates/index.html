@@ -44,9 +44,13 @@
 
       <template v-else-if="route === 'devices'">
         <section class="panel table-panel">
-          <div class="row">
+          <div class="row devices-header">
             <h2>Devices</h2>
-            <input v-model="filters.q" placeholder="Search devices" @input="loadDevices" />
+            <div class="row">
+              <input v-model="filters.q" placeholder="Search devices" @input="loadDevices" />
+              <button class="btn" type="button" @click="syncFromHomeAssistant" title="Sync from Home Assistant">Sync from HA</button>
+              <button class="btn danger" type="button" @click="wipeAllDevices" title="Delete all devices">Wipe All</button>
+            </div>
           </div>
 
           <table>

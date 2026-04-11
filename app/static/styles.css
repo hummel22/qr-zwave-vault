@@ -59,6 +59,10 @@ body {
   cursor: pointer;
 }
 
+.devices-header {
+  justify-content: space-between;
+}
+
 .panel {
   background: var(--c-surface);
   border: 1px solid var(--c-border);

@@ -244,7 +244,7 @@
                     <strong>{{ item.device_name }}</strong>
                     <span v-if="item.existing_name && item.existing_name !== item.device_name" class="sync-existing-name">was: {{ item.existing_name }}</span>
                   </td>
-                  <td class="sync-dsk-cell">{{ item.dsk }}</td>
+                  <td class="sync-dsk-cell" :title="item.dsk">{{ item.dsk }}</td>
                   <td>
                     <template v-if="item.action === 'new'">
                       <span class="sync-detail-line" v-if="item.manufacturer">{{ item.manufacturer }}</span>
@@ -271,7 +271,7 @@
             </table>
           </div>
           <div class="sync-preview-actions">
-            <button class="btn" type="button" @click="toggleAllSyncItems">{{ allSyncItemsSelected ? 'Deselect All' : 'Select All' }}</button>
+            <button class="btn ghost" type="button" @click="toggleAllSyncItems">{{ allSyncItemsSelected ? 'Deselect All' : 'Select All' }}</button>
             <button
               class="btn primary"
               type="button"

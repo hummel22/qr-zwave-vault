@@ -9,6 +9,7 @@
   --c-text-muted: #b3c0da;
   --c-border: #2a3b5f;
   --c-danger: #dc5757;
+  --c-success: var(--c-success);
   font-family: Inter, system-ui, sans-serif;
   color-scheme: dark;
 }
@@ -24,6 +25,7 @@
   --c-text-muted: #495875;
   --c-border: #cfdaee;
   --c-danger: #c23d3d;
+  --c-success: #22864a;
   color-scheme: light;
 }
 
@@ -113,6 +115,17 @@ textarea {
   color: #fff;
 }
 
+.btn.ghost {
+  background: transparent;
+  color: var(--c-text-muted);
+  border: 1px solid var(--c-border);
+}
+
+.btn.ghost:hover {
+  background: var(--c-surface-raised);
+  color: var(--c-text);
+}
+
 .icon-btn {
   width: 2.2rem;
   height: 2.2rem;
@@ -160,6 +173,12 @@ dialog {
   width: calc(100% - 2rem);
   background: var(--c-surface);
   color: var(--c-text);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 img {
@@ -258,7 +277,7 @@ img {
   width: calc(100% - 2rem);
   max-height: 85vh;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   padding: 0;
   overflow: hidden;
 }
@@ -283,13 +302,17 @@ img {
   display: grid;
   place-items: center;
   gap: 0.8rem;
-  padding: 3rem 1rem;
+  padding: 4rem 1.5rem;
   color: var(--c-text-muted);
 }
 
+.sync-preview-loading p {
+  animation: pulse 2s ease-in-out infinite;
+}
+
 .sync-spinner {
-  width: 2rem;
-  height: 2rem;
+  width: 3rem;
+  height: 3rem;
   border: 3px solid var(--c-border);
   border-top-color: var(--c-accent);
   border-radius: 50%;
@@ -298,6 +321,11 @@ img {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .sync-preview-empty {
@@ -326,8 +354,8 @@ img {
 }
 
 .badge-new {
-  background: color-mix(in oklab, #34c759 25%, var(--c-surface-raised) 75%);
-  color: #34c759;
+  background: color-mix(in oklab, var(--c-success) 25%, var(--c-surface-raised) 75%);
+  color: var(--c-success);
 }
 
 .badge-update {
@@ -348,6 +376,13 @@ img {
 .sync-preview-table-wrap {
   overflow-y: auto;
   padding: 0 0.4rem;
+  background:
+    linear-gradient(var(--c-surface) 30%, transparent) top / 100% 2rem,
+    linear-gradient(transparent, var(--c-surface) 70%) bottom / 100% 2rem,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.15), transparent) top / 100% 0.7rem,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.15), transparent) bottom / 100% 0.7rem;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
 }
 
 .sync-preview-table {
@@ -379,8 +414,39 @@ img {
   text-align: center;
 }
 
+.sync-preview-table input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 2px solid var(--c-border);
+  border-radius: 4px;
+  background: var(--c-surface-raised);
+  cursor: pointer;
+  position: relative;
+  vertical-align: middle;
+  padding: 0;
+}
+
+.sync-preview-table input[type="checkbox"]:checked {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
+.sync-preview-table input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 .sync-row-new {
-  background: color-mix(in oklab, #34c759 5%, transparent 95%);
+  background: color-mix(in oklab, var(--c-success) 5%, transparent 95%);
 }
 
 .sync-row-update {
@@ -388,11 +454,11 @@ img {
 }
 
 .sync-row-skip {
-  opacity: 0.55;
+  color: var(--c-text-muted);
 }
 
 .sync-row-unchanged {
-  opacity: 0.65;
+  color: var(--c-text-muted);
 }
 
 .sync-action-tag {
@@ -406,8 +472,8 @@ img {
 }
 
 .action-new {
-  background: color-mix(in oklab, #34c759 20%, var(--c-surface-raised) 80%);
-  color: #34c759;
+  background: color-mix(in oklab, var(--c-success) 20%, var(--c-surface-raised) 80%);
+  color: var(--c-success);
 }
 
 .action-update {
@@ -434,10 +500,12 @@ img {
 
 .sync-dsk-cell {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.8rem;
-  word-break: break-all;
+  font-size: 0.78rem;
   max-width: 160px;
   color: var(--c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sync-change-line {
@@ -465,7 +533,7 @@ img {
 }
 
 .sync-new-val {
-  color: #34c759;
+  color: var(--c-success);
 }
 
 .sync-detail-line {
@@ -483,9 +551,13 @@ img {
 .sync-preview-actions {
   display: flex;
   gap: 0.6rem;
-  justify-content: flex-end;
+  align-items: center;
   padding: 0.8rem 1.2rem;
   border-top: 1px solid var(--c-border);
+}
+
+.sync-preview-actions .btn:last-child {
+  margin-left: auto;
 }
 
 .sync-preview-actions .btn:disabled {
@@ -505,8 +577,15 @@ img {
   }
 
   .sync-preview-table th:nth-child(4),
-  .sync-preview-table td:nth-child(4) {
+  .sync-preview-table td:nth-child(4),
+  .sync-preview-table th:nth-child(5),
+  .sync-preview-table td:nth-child(5) {
     display: none;
+  }
+
+  .sync-preview-table td {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.85rem;
   }
 
   .sync-preview-dialog {

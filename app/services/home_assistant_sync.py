@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import base64
 import json
+import logging
+import os
+import socket
 import ssl
+import struct
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from app.models.device import DeviceCreate, DeviceRecord, build_device_record, normalize_dsk, now_utc
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -69,6 +76,128 @@ class HomeAssistantSyncService:
             raise last_error
         return {}
 
+    def _ws_connect(self, host: str, port: int, path: str, timeout: int) -> socket.socket:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect((host, port))
+        key = base64.b64encode(os.urandom(16)).decode()
+        handshake = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            f"Upgrade: websocket\r\n"
+            f"Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            f"Sec-WebSocket-Version: 13\r\n\r\n"
+        )
+        s.sendall(handshake.encode())
+        resp = s.recv(4096)
+        if b"101" not in resp:
+            s.close()
+            raise ValueError("websocket_handshake_failed")
+        return s
+
+    def _ws_recv(self, s: socket.socket, timeout: int = 10) -> str | None:
+        s.settimeout(timeout)
+        hdr = s.recv(2)
+        if len(hdr) < 2:
+            return None
+        length = hdr[1] & 0x7F
+        if length == 126:
+            length = struct.unpack(">H", s.recv(2))[0]
+        elif length == 127:
+            length = struct.unpack(">Q", s.recv(8))[0]
+        payload = b""
+        while len(payload) < length:
+            chunk = s.recv(min(length - len(payload), 65536))
+            if not chunk:
+                break
+            payload += chunk
+        return payload.decode("utf-8", errors="replace")
+
+    def _ws_send(self, s: socket.socket, obj: dict) -> None:
+        data = json.dumps(obj).encode("utf-8")
+        frame = bytearray([0x81])
+        mask = os.urandom(4)
+        if len(data) < 126:
+            frame.append(0x80 | len(data))
+        elif len(data) < 65536:
+            frame.append(0x80 | 126)
+            frame.extend(struct.pack(">H", len(data)))
+        else:
+            frame.append(0x80 | 127)
+            frame.extend(struct.pack(">Q", len(data)))
+        frame.extend(mask)
+        frame.extend(bytearray(b ^ mask[i % 4] for i, b in enumerate(data)))
+        s.sendall(frame)
+
+    def _fetch_nodes_via_websocket(self, config: HomeAssistantSyncConfig) -> list[dict[str, Any]]:
+        url = config.zwave_base_url or config.ha_base_url or ""
+        parsed = urlparse(url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or (443 if parsed.scheme in ("wss", "https") else 3000)
+        path = parsed.path or "/"
+
+        timeout = config.request_timeout_seconds
+        s = self._ws_connect(host, port, path, timeout)
+        try:
+            # Read version message
+            raw = self._ws_recv(s, timeout)
+            if not raw:
+                raise ValueError("zwave_ws_no_version")
+            version_msg = json.loads(raw)
+            if version_msg.get("type") != "version":
+                raise ValueError("zwave_ws_unexpected_message")
+            max_schema = version_msg.get("maxSchemaVersion", 0)
+            logger.info(
+                "Z-Wave JS Server v%s (driver %s, schema %d-%d)",
+                version_msg.get("serverVersion"),
+                version_msg.get("driverVersion"),
+                version_msg.get("minSchemaVersion", 0),
+                max_schema,
+            )
+
+            # Set API schema
+            schema_ver = min(max_schema, 35)
+            self._ws_send(s, {"messageId": "schema", "command": "set_api_schema", "schemaVersion": schema_ver})
+            schema_resp = self._ws_recv(s, timeout)
+            if not schema_resp:
+                raise ValueError("zwave_ws_schema_timeout")
+
+            # Request full state
+            self._ws_send(s, {"messageId": "state", "command": "start_listening"})
+            state_raw = self._ws_recv(s, timeout)
+            if not state_raw:
+                raise ValueError("zwave_ws_state_timeout")
+            state_msg = json.loads(state_raw)
+            state = state_msg.get("result", {}).get("state", {})
+            home_id = state.get("controller", {}).get("homeId") or version_msg.get("homeId") or 0
+            nodes = state.get("nodes", [])
+
+            # Normalize node data to match the format expected by _to_candidates
+            normalized: list[dict[str, Any]] = []
+            for node in nodes:
+                device_config = node.get("deviceConfig") or {}
+                node_id = node.get("nodeId", 0)
+                # Build a synthetic DSK from homeId + nodeId for tracking
+                synthetic_dsk = f"{home_id:010d}-{node_id:05d}-00000-00000-00000-00000-00000-00000"
+                normalized.append({
+                    "nodeId": node_id,
+                    "name": node.get("name") or node.get("label") or f"Node {node_id}",
+                    "location": node.get("location") or "",
+                    "manufacturer": device_config.get("manufacturer") or "",
+                    "productLabel": device_config.get("label") or node.get("label") or "",
+                    "description": device_config.get("description") or "",
+                    "dsk": node.get("dsk") or synthetic_dsk,
+                    "status": node.get("status"),
+                    "firmwareVersion": node.get("firmwareVersion"),
+                    "isControllerNode": node.get("isControllerNode", False),
+                    "_source_node": node,
+                })
+            logger.info("Fetched %d nodes via WebSocket (homeId=%s)", len(normalized), home_id)
+            return normalized
+        finally:
+            s.close()
+
     def _extract_nodes_from_payload(self, payload: Any) -> list[dict[str, Any]]:
         if isinstance(payload, dict) and isinstance(payload.get("data"), list):
             return [item for item in payload["data"] if isinstance(item, dict)]
@@ -126,21 +255,27 @@ class HomeAssistantSyncService:
             raise ValueError("ingress_discovery_failed")
         return urljoin(f"{base}/", ingress_base.lstrip("/"))
 
+    def _is_websocket_target(self, config: HomeAssistantSyncConfig) -> bool:
+        url = config.zwave_base_url or ""
+        return url.startswith("ws://") or url.startswith("wss://")
+
     def fetch_nodes_normalized(self, config: HomeAssistantSyncConfig) -> dict[str, Any]:
-        if config.mode == "ingress":
-            base_url = self._resolve_ingress_base(config)
-            auth_token = config.ha_auth_token
+        if config.mode == "direct" and config.zwave_base_url:
+            # Try WebSocket first (Z-Wave JS Server protocol), fall back to HTTP
+            try:
+                raw_nodes = self._fetch_nodes_via_websocket(config)
+            except (socket.timeout, TimeoutError, OSError, ValueError) as ws_err:
+                if self._is_websocket_target(config):
+                    raise
+                logger.info("WebSocket fetch failed (%s), falling back to HTTP", ws_err)
+                raw_nodes = self._fetch_nodes_via_http(config)
+        elif config.mode == "ingress":
+            raw_nodes = self._fetch_nodes_via_http(config)
         elif config.mode == "direct":
-            if not config.zwave_base_url:
-                raise ValueError("missing_zwave_base_url")
-            base_url = config.zwave_base_url.rstrip("/")
-            auth_token = config.zwave_api_token
+            raise ValueError("missing_zwave_base_url")
         else:
             raise ValueError("unsupported_mode")
 
-        path = config.zwave_path if config.zwave_path.startswith("/") else f"/{config.zwave_path}"
-        payload = self._request_json_with_retry(f"{base_url}{path}", auth_token, config)
-        raw_nodes = self._extract_nodes_from_payload(payload)
         normalized_nodes = [
             {
                 "id": node.get("id") or node.get("nodeId"),
@@ -157,6 +292,20 @@ class HomeAssistantSyncService:
             "fetched_at": datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z"),
             "nodes": normalized_nodes,
         }
+
+    def _fetch_nodes_via_http(self, config: HomeAssistantSyncConfig) -> list[dict[str, Any]]:
+        if config.mode == "ingress":
+            base_url = self._resolve_ingress_base(config)
+            auth_token = config.ha_auth_token
+        else:
+            if not config.zwave_base_url:
+                raise ValueError("missing_zwave_base_url")
+            base_url = config.zwave_base_url.rstrip("/")
+            auth_token = config.zwave_api_token
+
+        path = config.zwave_path if config.zwave_path.startswith("/") else f"/{config.zwave_path}"
+        payload = self._request_json_with_retry(f"{base_url}{path}", auth_token, config)
+        return self._extract_nodes_from_payload(payload)
 
     def fetch_nodes(self, config: HomeAssistantSyncConfig) -> list[HomeAssistantNodeCandidate]:
         normalized = self.fetch_nodes_normalized(config)
@@ -176,8 +325,12 @@ class HomeAssistantSyncService:
             return False, reason, 0
         except URLError as exc:
             return False, f"api_transport_error:{exc.reason}", 0
-        except TimeoutError:
+        except (TimeoutError, socket.timeout):
             return False, "api_transport_timeout", 0
+        except ConnectionRefusedError:
+            return False, "connection_refused", 0
+        except OSError as exc:
+            return False, f"network_error:{exc}", 0
         except ValueError as exc:
             return False, str(exc), 0
         except Exception as exc:  # pragma: no cover - defensive fallback

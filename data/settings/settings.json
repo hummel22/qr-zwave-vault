@@ -1,7 +1,7 @@
 {
   "username": "admin",
-  "password_salt": "58c2c8ab57832f0542483af9d70479fc",
-  "password_hash": "b39b6a76bf33d5ef153f1f890cf6fb33b1a1cdec31ed27e24d08a64b929bf1f7",
+  "password_salt": "9aa71a18b764f02983e5523eb6f2f024",
+  "password_hash": "f2c2ccc0f97179e3f67e6d8e7c4734b0420bde13f96d1e739bce64fb81797381",
   "github_repo": "https://github.com/example/repo",
   "github_token": "ghp_test_token_123456",
   "github_branch": "main",

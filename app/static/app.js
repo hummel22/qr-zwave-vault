@@ -29,6 +29,7 @@ createApp({
     return {
       setupRequired: false,
       isAuthenticated: false,
+      appVersion: "",
       message: "",
       route: "devices",
       theme: getCookie("theme") === "light" ? "light" : "dark",
@@ -149,6 +150,7 @@ createApp({
       if (!this.isAuthenticated) {
         return;
       }
+      this.appVersion = body?.version || "";
       const settings = body?.settings || {};
       this.admin = {
         username: settings.username || "",

@@ -19,7 +19,7 @@ from app.storage.device_store import DeviceStore
 from app.storage.settings_store import SettingsStore
 
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 DATA_DIR = Path(os.getenv("DATA_DIR", "./data/repo/devices"))
 SETTINGS_FILE = Path(os.getenv("SETTINGS_FILE", "./data/settings/settings.json"))
 store = DeviceStore(DATA_DIR)
@@ -141,7 +141,7 @@ def auth_me(request: Request) -> dict:
     _require_auth(request)
     settings = _current_settings_or_404()
     sync.configure(settings.github_repo, settings.github_token, settings.github_branch)
-    return {"authenticated": True, "user": request.cookies.get("vault_user"), "settings": settings.masked()}
+    return {"authenticated": True, "user": request.cookies.get("vault_user"), "settings": settings.masked(), "version": APP_VERSION}
 
 
 @app.get("/api/v1/admin/settings")

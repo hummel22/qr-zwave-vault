@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: qr-zwave-vault
-Version: 1.0.0
+Version: 1.2.0
 Summary: QR Z-Wave Vault service
 Requires-Python: >=3.12
 Requires-Dist: fastapi>=0.115.0

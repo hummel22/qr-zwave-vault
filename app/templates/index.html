@@ -75,7 +75,10 @@
         <section class="panel profile-panel stack">
           <div class="row profile-header">
             <h2>Profile</h2>
-            <button class="btn" @click="goToDevices">Back to Devices</button>
+            <div class="row">
+              <span v-if="appVersion" class="version-tag">v{{ appVersion }}</span>
+              <button class="btn" @click="goToDevices">Back to Devices</button>
+            </div>
           </div>
 
           <div class="profile-grid">

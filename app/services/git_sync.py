@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
+import re
+import shutil
 import subprocess
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -127,37 +130,71 @@ class GitSyncService:
         logger.info("Initialized git repo in %s", self._data_dir)
         return True
 
-    def _generate_qr_images(self) -> int:
-        """Generate QR PNG images for all device JSON files that have raw_value."""
-        if not self._data_dir:
-            return 0
-        import json
-        count = 0
-        for json_file in self._data_dir.glob("dev-*.json"):
-            try:
-                data = json.loads(json_file.read_text())
-                raw_value = data.get("raw_value", "")
-                if not raw_value:
-                    continue
-                png_path = json_file.with_suffix(".png")
-                image = qrcode.make(raw_value)
-                buf = io.BytesIO()
-                image.save(buf, format="PNG")
-                png_path.write_bytes(buf.getvalue())
-                count += 1
-            except Exception as exc:
-                logger.warning("Failed to generate QR for %s: %s", json_file.name, exc)
-        return count
+    @staticmethod
+    def _slugify(text: str) -> str:
+        """Convert text to a filesystem-safe slug."""
+        slug = text.lower().strip()
+        slug = re.sub(r"[^a-z0-9]+", "-", slug)
+        slug = slug.strip("-")
+        return slug[:60] or "unnamed"
 
-    def _cleanup_orphan_images(self) -> None:
-        """Remove PNG files that don't have a matching JSON file."""
+    @staticmethod
+    def _device_folder_name(data: dict) -> str:
+        """Build folder name: {name}[-{location}]-{first 5 DSK digits or nodsk}."""
+        name = GitSyncService._slugify(data.get("device_name") or "unnamed")
+        location_raw = (data.get("location") or "").strip()
+        location = GitSyncService._slugify(location_raw) if location_raw else ""
+        dsk = data.get("dsk") or ""
+        dsk_digits = "".join(ch for ch in dsk if ch.isdigit())[:5]
+        dsk_suffix = dsk_digits if dsk_digits else "nodsk"
+
+        parts = [name]
+        if location:
+            parts.append(location)
+        parts.append(dsk_suffix)
+        return "-".join(parts)
+
+    def _build_git_layout(self) -> None:
+        """Build structured devices/ folder in the git repo for commit.
+
+        Layout:
+          devices/
+            fire-alarm-kitchen-23493/
+              device.json
+              qr.png
+        """
         if not self._data_dir:
             return
-        for png_file in self._data_dir.glob("dev-*.png"):
-            json_file = png_file.with_suffix(".json")
-            if not json_file.exists():
-                png_file.unlink()
-                logger.info("Removed orphan QR image: %s", png_file.name)
+
+        devices_dir = self._data_dir / "devices"
+
+        # Remove existing devices/ folder to rebuild cleanly
+        if devices_dir.exists():
+            shutil.rmtree(devices_dir)
+        devices_dir.mkdir()
+
+        for json_file in sorted(self._data_dir.glob("dev-*.json")):
+            try:
+                data = json.loads(json_file.read_text())
+                folder_name = self._device_folder_name(data)
+                device_dir = devices_dir / folder_name
+                device_dir.mkdir(exist_ok=True)
+
+                # Copy device JSON (without bulky metadata.zwave_node for cleaner output)
+                clean_data = {k: v for k, v in data.items() if k != "metadata"}
+                device_dir.joinpath("device.json").write_text(
+                    json.dumps(clean_data, indent=2, default=str)
+                )
+
+                # Generate QR PNG
+                raw_value = data.get("raw_value", "")
+                if raw_value:
+                    image = qrcode.make(raw_value)
+                    buf = io.BytesIO()
+                    image.save(buf, format="PNG")
+                    device_dir.joinpath("qr.png").write_bytes(buf.getvalue())
+            except Exception as exc:
+                logger.warning("Failed to build layout for %s: %s", json_file.name, exc)
 
     def mark_write(self) -> None:
         """Commit and push changes after a data mutation."""
@@ -175,9 +212,12 @@ class GitSyncService:
                 self._status.last_success_at = self._status.last_attempt_at
                 return
 
-            # Generate QR images and clean up orphans
-            self._generate_qr_images()
-            self._cleanup_orphan_images()
+            # Build structured layout in devices/ subfolder
+            self._build_git_layout()
+
+            # Write .gitignore to only track the devices/ folder
+            gitignore = self._data_dir / ".gitignore"
+            gitignore.write_text("# Only track the structured devices/ folder\n*\n!devices/\n!devices/*/\n!devices/*/**\n!.gitignore\n")
 
             # Stage all changes
             self._run_git("add", "-A")

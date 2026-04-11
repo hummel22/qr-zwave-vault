@@ -297,9 +297,12 @@ def admin_preview_home_assistant_sync(request: Request) -> dict:
 
 
 @app.post("/api/v1/admin/sync-from-home-assistant")
-def admin_sync_from_home_assistant(request: Request) -> dict:
+def admin_sync_from_home_assistant(request: Request, body: dict | None = None) -> dict:
     _require_auth(request)
     settings = _current_settings_or_404()
+    selected_dsks: set[str] | None = None
+    if body and isinstance(body.get("dsks"), list):
+        selected_dsks = {str(d) for d in body["dsks"] if d}
     config = HomeAssistantSyncConfig(
         mode=settings.ha_mode,
         ha_base_url=settings.ha_url,
@@ -327,6 +330,9 @@ def admin_sync_from_home_assistant(request: Request) -> dict:
     for candidate in candidates:
         try:
             normalized_dsk = normalize_dsk(candidate.dsk.replace(" ", ""))
+            if selected_dsks is not None and normalized_dsk not in selected_dsks:
+                skipped += 1
+                continue
             current = by_dsk.get(normalized_dsk)
             if current:
                 merged = merge_candidate(current, candidate)

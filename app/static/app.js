@@ -31,6 +31,7 @@ createApp({
       isAuthenticated: false,
       appVersion: "",
       message: "",
+      messageType: "",
       route: "devices",
       theme: getCookie("theme") === "light" ? "light" : "dark",
       devices: [],
@@ -96,11 +97,15 @@ createApp({
     },
   },
   methods: {
-    setMessage(msg) {
+    setMessage(msg, type = "") {
       this.message = msg;
+      this.messageType = type;
       setTimeout(() => {
-        if (this.message === msg) this.message = "";
-      }, 3000);
+        if (this.message === msg) {
+          this.message = "";
+          this.messageType = "";
+        }
+      }, 4000);
     },
     toggleTheme() {
       this.theme = this.theme === "dark" ? "light" : "dark";
@@ -182,10 +187,10 @@ createApp({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(this.setup),
       });
-      if (!res.ok) return this.setMessage("Setup failed");
+      if (!res.ok) return this.setMessage("Setup failed", "error");
       this.setupRequired = false;
       this.loginForm.username = this.setup.username;
-      this.setMessage("Setup complete. Please login.");
+      this.setMessage("Setup complete. Please login.", "success");
     },
     async login() {
       const res = await fetch("/api/v1/auth/login", {
@@ -193,10 +198,10 @@ createApp({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(this.loginForm),
       });
-      if (!res.ok) return this.setMessage("Invalid login");
+      if (!res.ok) return this.setMessage("Invalid login", "error");
       this.isAuthenticated = true;
       await this.refreshSession();
-      this.setMessage("Logged in");
+      this.setMessage("Logged in", "success");
     },
     async logout() {
       await fetch("/api/v1/auth/logout", { method: "POST" });
@@ -293,11 +298,11 @@ createApp({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(this.form),
       });
-      if (!res.ok) return this.setMessage("Could not add device");
+      if (!res.ok) return this.setMessage("Could not add device", "error");
       this.stopScanner();
       this.$refs.addModal.close();
       await this.loadDevices();
-      this.setMessage("Device added");
+      this.setMessage("Device added", "success");
     },
     openDevice(item) {
       this.selectedDevice = item;
@@ -315,17 +320,17 @@ createApp({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(this.editForm),
       });
-      if (!res.ok) return this.setMessage("Update failed");
+      if (!res.ok) return this.setMessage("Update failed", "error");
       await this.loadDevices();
       this.$refs.deviceModal.close();
-      this.setMessage("Device updated");
+      this.setMessage("Device updated", "success");
     },
     async remove(id) {
       const res = await fetch(`/api/v1/devices/${id}`, { method: "DELETE" });
-      if (!res.ok) return this.setMessage("Delete failed");
+      if (!res.ok) return this.setMessage("Delete failed", "error");
       this.$refs.deviceModal.close();
       await this.loadDevices();
-      this.setMessage("Device deleted");
+      this.setMessage("Device deleted", "success");
     },
     async saveSettings() {
       const payload = {
@@ -350,7 +355,7 @@ createApp({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) return this.setMessage("Failed to save settings");
+      if (!res.ok) return this.setMessage("Failed to save settings", "error");
       const body = await parseJsonSafely(res);
       this.admin.new_password = "";
       this.admin.github_token = "";
@@ -359,7 +364,7 @@ createApp({
       this.admin.github_token_masked = body?.settings?.github_token_masked || this.admin.github_token_masked;
       this.admin.ha_token_masked = body?.settings?.ha_token_masked || this.admin.ha_token_masked;
       this.admin.zwave_api_token_masked = body?.settings?.zwave_api_token_masked || this.admin.zwave_api_token_masked;
-      this.setMessage("Settings saved");
+      this.setMessage("Settings saved", "success");
     },
     async testHomeAssistantConfig() {
       if (this.haTestLoading) return;
@@ -388,13 +393,17 @@ createApp({
         });
         clearTimeout(timeout);
         const body = await parseJsonSafely(res);
-        if (!res.ok) return this.setMessage("Config test failed");
-        this.setMessage(body?.ok ? `HA config OK — found ${body?.count || 0} node${body?.count === 1 ? '' : 's'}` : `HA config failed: ${body?.reason || "unknown"}`);
+        if (!res.ok) return this.setMessage("Config test failed", "error");
+        if (body?.ok) {
+          this.setMessage(`HA config OK — found ${body?.count || 0} node${body?.count === 1 ? '' : 's'}`, "success");
+        } else {
+          this.setMessage(`HA config failed: ${body?.reason || "unknown"}`, "error");
+        }
       } catch (err) {
         if (err.name === "AbortError") {
-          this.setMessage("HA config test timed out — check URL and network");
+          this.setMessage("HA config test timed out — check URL and network", "error");
         } else {
-          this.setMessage("HA config test failed — could not reach server");
+          this.setMessage("HA config test failed — could not reach server", "error");
         }
       } finally {
         this.haTestLoading = false;
@@ -431,9 +440,9 @@ createApp({
       } catch (err) {
         this.$refs.syncPreviewModal.close();
         if (err.name === "AbortError") {
-          this.setMessage("Sync preview cancelled");
+          this.setMessage("Sync preview cancelled", "error");
         } else {
-          this.setMessage("Failed to connect to Home Assistant");
+          this.setMessage("Failed to connect to Home Assistant", "error");
         }
       } finally {
         this.syncPreviewLoading = false;
@@ -447,18 +456,33 @@ createApp({
     },
     async confirmSync() {
       this.syncImporting = true;
+      const selectedDsks = (this.syncPreview || [])
+        .filter((i) => i.selected)
+        .map((i) => i.dsk);
       try {
-        const res = await fetch("/api/v1/admin/sync-from-home-assistant", { method: "POST" });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
+        const res = await fetch("/api/v1/admin/sync-from-home-assistant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dsks: selectedDsks }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
         const body = await parseJsonSafely(res);
         if (!res.ok) {
-          return this.setMessage(body?.detail || "Home Assistant sync failed");
+          return this.setMessage(body?.detail || "Home Assistant sync failed", "error");
         }
         const results = body?.results || {};
         await this.loadDevices();
         this.$refs.syncPreviewModal.close();
-        this.setMessage(`HA sync complete: +${results.created || 0} new, ${results.updated || 0} updated, ${results.skipped || 0} skipped`);
-      } catch {
-        this.setMessage("Sync request failed");
+        this.setMessage(`HA sync complete: +${results.created || 0} new, ${results.updated || 0} updated, ${results.skipped || 0} skipped`, "success");
+      } catch (err) {
+        if (err.name === "AbortError") {
+          this.setMessage("Sync timed out — check HA connection", "error");
+        } else {
+          this.setMessage("Sync request failed", "error");
+        }
       } finally {
         this.syncImporting = false;
       }
@@ -466,12 +490,12 @@ createApp({
     async testRepoAuth() {
       const res = await fetch("/api/v1/admin/test-repo-auth", { method: "POST" });
       const body = await parseJsonSafely(res);
-      this.setMessage(body?.ok ? "Repo auth OK" : `Repo auth failed: ${body?.reason || "Unknown error"}`);
+      this.setMessage(body?.ok ? "Repo auth OK" : `Repo auth failed: ${body?.reason || "Unknown error"}`, body?.ok ? "success" : "error");
     },
     async forcePull() {
       const res = await fetch("/api/v1/admin/force-pull-update", { method: "POST" });
       const body = await parseJsonSafely(res);
-      this.setMessage(body?.ok ? "Repository updated" : "Repository update failed");
+      this.setMessage(body?.ok ? "Repository updated" : "Repository update failed", body?.ok ? "success" : "error");
     },
   },
   beforeUnmount() {

@@ -195,8 +195,28 @@ img {
   transform: translateX(-50%);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 1.2rem;
   border-radius: 999px;
+  font-weight: 500;
+  z-index: 100;
+  animation: toast-in 0.25s ease-out;
+}
+
+.message-success {
+  background: color-mix(in oklab, var(--c-success) 20%, var(--c-surface) 80%);
+  border-color: var(--c-success);
+  color: var(--c-success);
+}
+
+.message-error {
+  background: color-mix(in oklab, var(--c-danger) 20%, var(--c-surface) 80%);
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(0.5rem); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 .scan-tools {
